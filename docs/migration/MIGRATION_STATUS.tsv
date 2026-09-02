@@ -1,0 +1,58 @@
+id	domain	capability	status	evidence_or_blocker	next_slice
+CFG-01	Configuration/bootstrap	Drax environment contract	PARTIAL	Example/README names do not match audited Drax config names	Correct config docs/example and startup validation
+CFG-02	Configuration/bootstrap	Secure root bootstrap	PARTIAL	Hardcoded root/root.123 in SetupContainerHub.ts	Environment-gated bootstrap policy
+CFG-03	Configuration/bootstrap	Runtime request validation	PARTIAL	Fastify validator compiler accepts every request	Restore schema/Zod validation
+ID-01	Identity/auth	Login/logout/protected routes	DONE	Drax auth plus current router/login/shell	Live deployment regression check
+ID-02	Identity/auth	Profile/password/avatar	PARTIAL	Profile display only; routes/config incomplete	Decide and wire Drax flows
+ID-03	Identity/auth	Registration/recovery/activation	NEEDS_PRODUCT_DECISION	Drax primitives exist; SMTP/base URL absent	Confirm product need before wiring
+ID-04	Identity/auth	LDAP and refresh token compatibility	NEEDS_PRODUCT_DECISION	No Drax LDAP; access token only	Product/auth architecture decision
+RBAC-01	Users/roles/groups/tenants	Docker permission enforcement	DONE	Current REST/routes/menu use explicit permissions	Maintain API tests
+RBAC-02	Users/roles/groups/tenants	Legacy role bundles	MISSING	Only Admin/root seeded	Approve role mapping
+RBAC-03	Users/roles/groups/tenants	Users/roles/tenants administration	PARTIAL	Backend routes exist; no UI; Admin lacks permissions	Role decision then expose Drax pages
+RBAC-04	Users/roles/groups/tenants	Groups	NEEDS_PRODUCT_DECISION	Legacy feature; no full Drax group domain	Confirm surviving business use
+AUD-01	Operational audit	Durable Docker/network mutation audit	MISSING	Legacy writes audits; current commands do not	Decide audit contract before destructive UI
+AUD-02	Operational audit	Session/login-failure dashboards	MISSING	Drax stores data but ContainerHub registers no dashboard routes/pages	Decide operational need before exposing Drax pages
+SVC-01	Services	List/search/filter/sort/pagination	DONE	Drax state/custom table plus server paginate	Maintain API/UI proof
+SVC-02	Services	Stack-context navigation	DONE	Stacks query seeds Services filter	Maintain UI proof
+SVC-03	Services	Task expansion	DONE	Normalized task endpoint and expandable rows	Maintain API/UI proof
+SVC-04	Services	Bulk restart UI	PARTIAL	Backend exists; no UI/confirmation/errors	After audit, add restart-only slice
+SVC-05	Services	Bulk remove UI	PARTIAL	Backend exists; no UI/confirmation/errors	After restart and audit
+SVC-06	Services	Create/update behavior	PARTIAL	Backend misses legacy policies/default networks/audit; shapes unproven	Docker contract probe before UI
+TASK-01	Tasks and inspect	Normalized list	DONE	Current service task endpoint/UI	Maintain API/UI proof
+TASK-02	Tasks and inspect	Task inspect	MISSING	Internal inspect only	Permission/redaction decision
+LOG-01	Task/service logs	Per-task snapshot and stream	DONE	Authenticated REST/WS and filters	Live WSS proof
+LOG-02	Task/service logs	Service stack/name snapshot	PARTIAL	fetchLogs raw fields against normalized tasks	NEXT: failing test and shared fix
+LOG-03	Task/service logs	Editable log ceiling	NEEDS_PRODUCT_DECISION	Legacy setting 10000; current fixed 2000	Confirm operational need
+STACK-01	Stacks	Derived list and service navigation	DONE	Current page derives from Services	No work until scale measured
+NODE-01	Nodes	Read-only inventory	DONE	Current page/API	Live cluster proof
+NODE-02	Nodes	Resource display	PARTIAL	Backend data exists; UI omits	Small UI-only slice
+NODE-03	Nodes	Agent health	NEEDS_PRODUCT_DECISION	Requires remote-node architecture	Topology decision
+NET-01	Networks	Read-only inventory	DONE	Current page/API	Live Docker proof
+NET-02	Networks	Filters/refresh/formatting	MISSING	Legacy UI behavior absent	Client-only slice
+NET-03	Networks	Create/update/remove UI	NEEDS_PRODUCT_DECISION	Backend exists; legacy UI absent; update destructive	Product/audit decision
+NET-04	Networks	Mutation audit and stack labels	PARTIAL	Current backend omits both	Before mutation UI
+GHOST-01	Containers and ghosts	Page/navigation	DONE	Current table exists	Do not expose actions
+GHOST-02	Containers and ghosts	Detection semantics	PARTIAL	Current endpoint lists labeled local containers	Define healthy/orphan and correct endpoint
+CONT-01	Containers and ghosts	Service-filtered normalized container listing	MISSING	Legacy backend contract exists; no target API or current UI consumer	Confirm consumer before adding
+VER-01	Docker version	Version/API display	MISSING	Legacy docker.version; no target contract	Tiny read-only slice if confirmed
+CLU-01	Cluster information	Aggregate counts	MISSING	No target contract	Define task count semantics
+CLU-02	Cluster information	Node/task topology and polling	NEEDS_PRODUCT_DECISION	Nodes/services views may be sufficient	Add only after summary need
+TERM-01	Web terminal	Secure local-daemon terminal	DONE	Ticket/origin/shell/bounds implemented	Live local proof
+TERM-02	Web terminal	Remote-worker execution	PARTIAL	Direct manager daemon exec not equivalent	Shared topology proof/decision
+STAT-01	On-demand statistics	One-shot stats backend	PARTIAL	Raw direct-daemon stats, no normalized DTO	Normalize and prove remote behavior
+STAT-02	On-demand statistics	Polling charts	MISSING	Legacy UI absent	After STAT-01
+MON-01	Monitoring history	Configuration CRUD/actions	MISSING	No target entity/API/UI	Product decision then minimal persisted slice
+MON-02	Monitoring history	Sample worker/history/retention	MISSING	No target worker/storage	After topology and stats
+LIFE-01	Task lifecycle monitoring	Bounded running/absent history	NEEDS_PRODUCT_DECISION	Legacy polling approximation absent	Confirm distinct operational need
+AGENT-01	Node agent	Shared remote-node transport	NEEDS_PRODUCT_DECISION	Legacy transport insecure; target local-only	One remote-worker experiment
+FS-01	Host provisioning	Confined local files/folders	DONE	DOCKER_DATA_PATH confinement and awaited writes	Live filesystem proof
+FS-02	Host provisioning	All-node provisioning	PARTIAL	Legacy fans out; current local only	After topology decision
+GL-01	GitLab	Projects/tags	DONE	Current protected REST/UI	Confirm permission and live API
+REG-01	Docker Registry	Catalog/tags	DONE	Current protected REST/UI	Confirm permission/auth and live API
+SET-01	Settings	Confirmed operational settings	NEEDS_PRODUCT_DECISION	Generic legacy service absent	Add per-domain only
+SET-02	Settings	Registry purge settings	NEEDS_PRODUCT_DECISION	Legacy settings exist but no app-owned purge consumer was found	Mark obsolete only after product confirmation
+CUST-01	Customization	Editable branding/language	NEEDS_PRODUCT_DECISION	Static Drax shell currently sufficient	Confirm customer requirement
+MEDIA-01	LDAP/email/media	Avatar upload runtime	PARTIAL	Drax code exists; multipart/base/file/avatar paths absent	Only after product decision/config
+DIAG-01	Diagnostics/docs	OpenAPI/Fastify logging	DONE	/documentation and logger	Runtime smoke
+DIAG-02	Diagnostics/docs	Public liveness	NEEDS_PRODUCT_DECISION	Protected health not equivalent to /status	Deployment requirement
+DIAG-03	Diagnostics/docs	Legacy error demos/About	OBSOLETE	Diagnostic/demo artifacts, no operational need	None
