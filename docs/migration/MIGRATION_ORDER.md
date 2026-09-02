@@ -85,16 +85,28 @@ After role policy and runtime configuration:
 - Customization: retain static Drax shell unless editable customer branding/language is confirmed.
 - Legacy diagnostics/error demos remain obsolete. Registry purge settings remain `NEEDS_PRODUCT_DECISION` because no app-owned consumer was found; mark them obsolete only after product confirmation.
 
-## Next single vertical slice
+## Completed vertical slice: CFG-01
 
-**Fix service-level logs correctness.**
+**Drax environment contract.**
 
-Scope:
+Evidence:
 
-1. Failing test: normalized task list containing one running task selects its normalized `id`.
-2. Fix `fetchLogs()` at the shared service boundary; no new endpoint or abstraction.
-3. Endpoint authorization tests for unauthenticated, denied and `DOCKER_LOGS` allowed users.
-4. Live proof against one running task if Docker is available.
-5. Update `MIGRATION_STATUS.tsv` from PARTIAL to DONE only after API proof; UI proof remains separate if no current UI consumes stack/service logs.
+1. Runtime, `.env.example`, README and Playwright backend startup use the current Drax names: `DRAX_DB_ENGINE`, its engine-specific DB value, `DRAX_JWT_SECRET` and `DRAX_PORT`.
+2. Startup validation rejects a missing/unsupported DB engine, a missing Mongo URI or SQLite file, and a missing/blank JWT secret before connection or bootstrap work.
+3. Focused tests cover valid MongoDB/SQLite contracts and every mandatory-value failure; compiled-process checks confirm missing DB/JWT configuration exits nonzero.
+4. `DRAX_JWT_SECRET` has no source-controlled fallback value.
+5. `MIGRATION_STATUS.tsv` records CFG-01 as DONE; root bootstrap policy and request validation remain separate CFG-02/CFG-03 slices.
 
-This precedes a new domain because it repairs an exposed broken contract with the smallest verified change and no architectural commitment.
+## Completed vertical slice: LOG-02
+
+**Service-level logs correctness.**
+
+Evidence:
+
+1. A failing test reproduced normalized task selection returning no logs.
+2. `fetchLogs()` now consumes normalized `state` and `id` at the shared service boundary; no endpoint or abstraction was added.
+3. Endpoint tests cover unauthenticated, denied and `DOCKER_LOGS` allowed requests.
+4. A live route request selected a running Docker task and returned its log snapshot.
+5. `MIGRATION_STATUS.tsv` records LOG-02 as DONE; UI proof remains separate because no current UI consumes stack/service logs.
+
+No subsequent migration slice is selected here.

@@ -30,7 +30,7 @@
 | `GET /api/docker/task/:taskId` | undecided | Raw/redacted inspect | MISSING |
 | `GET /api/docker/task/:taskId/logs?tail=` | `DOCKER_LOGS` | Snapshot, tail 1..2000 | DONE |
 | `WS /api/docker/task/:taskId/logs/stream` | `DOCKER_LOGS` | JWT via bearer subprotocol; one filter-start frame | DONE |
-| `GET /api/docker/logs/:stack/:service` | `DOCKER_LOGS` | Running-task snapshot; normalized/raw field bug | PARTIAL |
+| `GET /api/docker/logs/:stack/:service` | `DOCKER_LOGS` | Snapshot from the first normalized running task; `null` when none is running | DONE |
 | task/service stats | `DOCKER_VIEW` | Raw Docker stats; no normalized DTO or UI | PARTIAL |
 | terminal ticket + local-daemon `WS /api/docker/terminal` | `DOCKER_TERMINAL` | One-use 60s ticket, origin/shell/size/time limits | DONE |
 | terminal against a remote worker | `DOCKER_TERMINAL` | No proven distributed execution transport | PARTIAL |
@@ -83,11 +83,10 @@ Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclud
 
 ## Known contract defects and incompatibilities
 
-1. `fetchLogs()` in current `ServiceService.ts` consumes normalized tasks as raw Docker tasks.
-2. Current ghost endpoint name/response does not match ghost semantics.
-3. Service create/update network and health-check option placement is not live-proven.
-4. Runtime Fastify validation is disabled despite OpenAPI schemas.
-5. GraphQL resolver loading searches `.resolvers.ts`; compiled production files are `.resolvers.js`.
-6. `@graphql-tools/load-files` and `@graphql-tools/merge` are direct imports but only transitively installed.
-7. Current Drax access-token model does not implement legacy persisted refresh-token behavior.
-8. GitLab/Registry use `{items,totalItems}`/catalog shapes rather than the Drax pagination contract; this is acceptable for their custom read-only pages unless common pagination is needed.
+1. Current ghost endpoint name/response does not match ghost semantics.
+2. Service create/update network and health-check option placement is not live-proven.
+3. Runtime Fastify validation is disabled despite OpenAPI schemas.
+4. GraphQL resolver loading searches `.resolvers.ts`; compiled production files are `.resolvers.js`.
+5. `@graphql-tools/load-files` and `@graphql-tools/merge` are direct imports but only transitively installed.
+6. Current Drax access-token model does not implement legacy persisted refresh-token behavior.
+7. GitLab/Registry use `{items,totalItems}`/catalog shapes rather than the Drax pagination contract; this is acceptable for their custom read-only pages unless common pagination is needed.
