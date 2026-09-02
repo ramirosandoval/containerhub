@@ -7,6 +7,6 @@ await SetupContainerHub()
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const server = YogaFastifyServerFactory()
-const port = Number(process.env.PORT ?? 9998)
+const port = Number(process.env.DRAX_PORT ?? 9998)
 await server.start(port)
 console.log(`containerhub-back listening on ${port}`)

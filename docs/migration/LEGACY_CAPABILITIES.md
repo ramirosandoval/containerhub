@@ -388,7 +388,7 @@ Evidence: legacy `DockerManageService.js`, `DockerNodeService.js`, `ClusterInfor
 **BACKEND CAPABILITIES**
 
 - Snapshot and follow streams. Current correctly decodes multiplexed Docker frames and authenticates task REST/WebSocket contracts.
-- Current stack/service `fetchLogs` is defective because it searches normalized task models with raw `Status`/`ID` fields.
+- Current stack/service `fetchLogs` selects the first normalized running task and retrieves logs by its normalized `id`.
 - Logs are not persisted.
 
 **AUTHORIZATION**
@@ -403,7 +403,7 @@ Evidence: legacy `DockerManageService.js`, `DockerNodeService.js`, `ClusterInfor
 
 **DEPENDENCIES / RISKS**
 
-- Docker logs, WebSocket, xterm. Fix service-level selection before claiming parity; decide whether the log ceiling remains configurable.
+- Docker logs, WebSocket, xterm. Service-level selection is fixed; decide whether the log ceiling remains configurable.
 
 ### Structured field completion
 
@@ -1237,10 +1237,10 @@ Evidence: legacy base module; target `YogaFastifyServerFactory.ts`, `ServiceRout
 
 - Startup config, Mongo connection, permissions, roles, root, LDAP settings, settings and customization initialization.
 - Current delegates config/DB/identity helpers to Drax and creates one Admin/root.
+- ContainerHub now uses the current Drax environment names directly and rejects startup before connection/bootstrap when the DB engine, engine-specific DB value, or JWT secret is absent.
 
 **RISKS**
 
-- Current `.env.example`/README names (`MONGO_URI`, `JWT_SECRET`) do not match audited Drax names (`DRAX_DB_ENGINE`, `DRAX_MONGO_URI`, `DRAX_JWT_SECRET`, etc.).
 - Hardcoded `root/root.123` is production-unsafe.
 - Admin has Docker permissions only and cannot necessarily administer Drax identity.
 - Shared Mongo collection compatibility is unverified.

@@ -7,7 +7,7 @@ export default defineConfig({
     projects: [{name: 'chromium', use: {...devices['Desktop Chrome']}}],
     webServer: [
         {
-            command: 'PORT=10000 TERMINAL_ALLOWED_ORIGIN=http://127.0.0.1:5173 npm run dev',
+            command: 'DRAX_PORT=10000 TERMINAL_ALLOWED_ORIGIN=http://127.0.0.1:5173 npm run dev',
             cwd: '../containerhub-back',
             url: 'http://127.0.0.1:10000/graphql',
             reuseExistingServer: false,

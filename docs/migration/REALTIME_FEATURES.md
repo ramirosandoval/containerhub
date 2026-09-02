@@ -2,7 +2,7 @@
 
 | Feature | Legacy transport/cadence | Current ContainerHub | Auth | Persistence | Risk / decision |
 |---|---|---|---|---|---|
-| Task logs | Raw WebSocket `/logs`, Docker `follow:true`; reconnect on user/filter change | Authenticated task WebSocket with robust frame decoding; same user-driven reconnect | Legacy socket unguarded; current `DOCKER_LOGS` | None | Service-level snapshot bug; fixed 2000 vs editable 10000 ceiling |
+| Task logs | Raw WebSocket `/logs`, Docker `follow:true`; reconnect on user/filter change | Authenticated task WebSocket with robust frame decoding; normalized running-task service snapshots; same user-driven reconnect | Legacy socket unguarded; current `DOCKER_LOGS` | None | Fixed 2000 vs editable 10000 ceiling |
 | Terminal | Browser WS → backend → per-node agent WS | One-use ticket + direct Docker exec WebSocket | Legacy relay unguarded; current `DOCKER_TERMINAL`, ticket and Origin | In-memory tickets only | Multi-worker support unproven; one-process ticket store |
 | Cluster topology | Recursive request polling, selectable 5–60s; default 5s, initially disabled | Missing | Legacy `DOCKER_VIEW` | None | Avoid timer leaks and N+1; product decision |
 | Container/task stats | Recursive polling after response, selectable 5–60s | One-shot raw stats API, no UI | Current `DOCKER_VIEW` | None | Normalize DTO and prove remote tasks first |

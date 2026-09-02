@@ -1,5 +1,5 @@
 id	domain	capability	status	evidence_or_blocker	next_slice
-CFG-01	Configuration/bootstrap	Drax environment contract	PARTIAL	Example/README names do not match audited Drax config names	Correct config docs/example and startup validation
+CFG-01	Configuration/bootstrap	Drax environment contract	DONE	Runtime/example/README use current DRAX_* names; focused tests and compiled-process checks prove mandatory DB/JWT startup failure	Maintain config tests
 CFG-02	Configuration/bootstrap	Secure root bootstrap	PARTIAL	Hardcoded root/root.123 in SetupContainerHub.ts	Environment-gated bootstrap policy
 CFG-03	Configuration/bootstrap	Runtime request validation	PARTIAL	Fastify validator compiler accepts every request	Restore schema/Zod validation
 ID-01	Identity/auth	Login/logout/protected routes	DONE	Drax auth plus current router/login/shell	Live deployment regression check
@@ -21,7 +21,7 @@ SVC-06	Services	Create/update behavior	PARTIAL	Backend misses legacy policies/de
 TASK-01	Tasks and inspect	Normalized list	DONE	Current service task endpoint/UI	Maintain API/UI proof
 TASK-02	Tasks and inspect	Task inspect	MISSING	Internal inspect only	Permission/redaction decision
 LOG-01	Task/service logs	Per-task snapshot and stream	DONE	Authenticated REST/WS and filters	Live WSS proof
-LOG-02	Task/service logs	Service stack/name snapshot	PARTIAL	fetchLogs raw fields against normalized tasks	NEXT: failing test and shared fix
+LOG-02	Task/service logs	Service stack/name snapshot	DONE	Normalized running-task selection; auth/API tests and live Docker route proof	Maintain API and live proof
 LOG-03	Task/service logs	Editable log ceiling	NEEDS_PRODUCT_DECISION	Legacy setting 10000; current fixed 2000	Confirm operational need
 STACK-01	Stacks	Derived list and service navigation	DONE	Current page derives from Services	No work until scale measured
 NODE-01	Nodes	Read-only inventory	DONE	Current page/API	Live cluster proof

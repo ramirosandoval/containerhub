@@ -662,8 +662,7 @@ export async function fetchTaskLogs(taskId: string, tail: number): Promise<strin
 
 export async function fetchLogs(stackName: string, serviceName: string, lines = 30): Promise<string[] | null> {
     const tasks = await fetchTasks(`${stackName}_${serviceName}`)
-    const runningTask = tasks.find((task) => getOptionalField(getRecordField(task, 'Status'), 'State') === 'running')
-    const taskId = runningTask ? getOptionalField(runningTask, 'ID') : undefined
+    const taskId = tasks.find((task) => task.state === 'running')?.id
     if (!taskId) return null
 
     return fetchTaskLogs(taskId, lines)
