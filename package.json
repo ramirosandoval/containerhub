@@ -1,0 +1,20 @@
+{
+  "name": "containerhub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ContainerHub — Docker Swarm management panel (Drax-based)",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "setup": "sh setup.sh",
+    "dev:back": "npm run dev -w @containerhub/back",
+    "dev:front": "npm run dev -w @containerhub/front",
+    "build:back": "npm run build -w @containerhub/back",
+    "build:front": "npm run build -w @containerhub/front"
+  },
+  "devDependencies": {
+    "lerna": "^8.1.2",
+    "typescript": "^5.6.2"
+  }
+}

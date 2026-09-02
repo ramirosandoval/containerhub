@@ -1,0 +1,42 @@
+type Image {
+  name: String!
+  nameWithTag: String!
+  namespace: String
+  domain: String
+  fullname: String
+  tag: String
+}
+
+type Port {
+  hostPort: Int
+  containerPort: Int
+  protocol: String
+}
+
+type Service {
+  id: ID!
+  name: String!
+  stack: String
+  image: Image
+  ports: [Port]
+  createdAt: String
+  updatedAt: String
+}
+
+type ServiceWarning {
+  Warnings: [String]
+}
+
+type RemoveResult {
+  message: String
+}
+
+type Query {
+  fetchService(stack: String): [Service]
+  findServiceById(id: String!): Service
+}
+
+type Mutation {
+  dockerRestart(serviceId: String!): ServiceWarning
+  dockerRemove(serviceId: String!): RemoveResult
+}

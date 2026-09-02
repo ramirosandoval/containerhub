@@ -1,0 +1,46 @@
+{
+  "name": "@containerhub/front",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "node --import tsx --test src/**/__tests__/**/*.test.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@drax/common-front": "^3.29.0",
+    "@drax/common-vue": "^3.29.0",
+    "@drax/crud-front": "^3.21.0",
+    "@drax/crud-share": "^3.50.0",
+    "@drax/crud-vue": "^3.50.0",
+    "@drax/identity-front": "^3.50.0",
+    "@drax/identity-share": "^3.23.0",
+    "@drax/identity-vue": "^3.50.0",
+    "@mdi/font": "^7.4.47",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/xterm": "^6.0.0",
+    "core-js": "^3.34.0",
+    "pinia": "^3.0.4",
+    "pinia-plugin-persistedstate": "^4.7.1",
+    "roboto-fontface": "*",
+    "vue": "^3.5.28",
+    "vue-i18n": "^11.2.8",
+    "vue-router": "^4.4.0",
+    "vuetify": "^3.11.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-vue": "^5.1.0",
+    "sass-embedded": "^1.103.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.0",
+    "vite-plugin-vuetify": "^2.0.4",
+    "vue-tsc": "^2.0.29"
+  }
+}
