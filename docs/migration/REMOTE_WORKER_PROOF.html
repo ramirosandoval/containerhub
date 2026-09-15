@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Prueba de ContainerHub en worker remoto</title>
+</head>
+<body>
+  <h1>Prueba de ContainerHub en worker remoto</h1>
+  <p>Ejecutar desde el manager del Swarm.</p>
+
+  <h2>1. Inicializar mTLS, red y secrets</h2>
+  <pre>cd /home/ramiro/dockerway/containerhub
+packages/containerhub-agent/deploy-remote-worker-proof.sh init</pre>
+
+  <h2>2. Configurar y desplegar el backend</h2>
+  <p>El backend debe ser un servicio Swarm, estar unido a <code>containerhub-agent-network</code> y tener los tres secrets/variables cliente descritos en <code>packages/containerhub-agent/TLS.md</code>, sección 5.</p>
+
+  <h2>3. Desplegar el agent y el task de prueba</h2>
+  <pre>packages/containerhub-agent/deploy-remote-worker-proof.sh deploy \
+  REGISTRY_ALCANZABLE_POR_DEBIANVM/containerhub-agent:VERSION \
+  NOMBRE_SERVICIO_BACKEND</pre>
+  <p>El script construye y publica el agent, lo despliega globalmente y crea <code>containerhub-remote-proof</code> en <code>debianvm</code>.</p>
+
+  <h2>4. Probar</h2>
+  <ol>
+    <li>Abrir Nodes: ambos nodos deben estar saludables.</li>
+    <li>Abrir el task <code>containerhub-remote-proof</code>.</li>
+    <li>Probar terminal remoto, stats y ghosts.</li>
+  </ol>
+
+  <h2>5. Limpiar</h2>
+  <pre>packages/containerhub-agent/deploy-remote-worker-proof.sh cleanup</pre>
+  <p>El cleanup conserva la red, los secrets y la PKI.</p>
+
+  <h2>Resultado 2026-09-14</h2>
+  <ul>
+    <li>El agent global DNSRR ejecutó una réplica en <code>ramiro</code> y otra en <code>debianvm</code>, sin puertos públicos.</li>
+    <li>Ambos endpoints aceptaron mTLS y rechazaron conexiones sin certificado cliente.</li>
+    <li>Chromium autenticado verificó Nodes, un ghost remoto real, estadísticas con cuatro gráficos y terminal remota mediante eventos físicos de teclado.</li>
+    <li>Los cuatro escenarios pasaron en serie; se eliminaron servicios, contenedores, imágenes, credenciales y archivos temporales.</li>
+  </ul>
+</body>
+</html>

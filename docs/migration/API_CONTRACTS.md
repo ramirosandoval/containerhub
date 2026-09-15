@@ -4,7 +4,7 @@
 
 - REST/Fastify is the primary ContainerHub transport. Drax identity and HTTP clients remain authoritative infrastructure.
 - Keep GraphQL only where current compatibility requires it; do not recreate legacy Apollo organization.
-- OpenAPI schemas currently document routes but Fastify runtime validation is globally bypassed. Manual validation is therefore part of the actual contract until that architecture is corrected.
+- OpenAPI schemas document routes and the shared Ajv 2020-12 compiler enforces Fastify request validation and coercion.
 - Docker error details must not leak secrets; destructive commands must retain meaningful not-found/conflict/validation semantics.
 
 ## Current implemented contracts
@@ -16,11 +16,12 @@
 | `GET /api/services` | `DOCKER_VIEW` | Full normalized service array | DONE |
 | `GET /api/services/paginate` | `DOCKER_VIEW` | Query `page,limit,orderBy,order,search,stack,filters`; returns `{page,limit,total,items}` | DONE |
 | `GET /api/docker/service/:idOrName` | `DOCKER_VIEW` | Inspect/find | DONE |
-| `POST /api/docker/service` | `DOCKER_CREATE` | Partial legacy input compatibility; requires Docker probe | PARTIAL |
-| `PUT /api/docker/service/:service` | `DOCKER_UPDATE` | Versioned update; policies/network/health parity incomplete | PARTIAL |
-| restart/remove single and bulk backend | operation-specific | Sequential fail-fast commands | DONE |
-| restart/remove single and bulk UI | operation-specific | No controls, confirmation or feedback | PARTIAL |
-| service stats/tag | `DOCKER_VIEW` | Raw stats/tag; no end-user statistics UI | PARTIAL |
+| `POST /api/docker/service` | `DOCKER_CREATE` | Inspected response, task networks/aliases, labeled stack network, health-check, resources and legacy policies | DONE |
+| `PUT /api/docker/service/:service` | `DOCKER_UPDATE` | Live versioned update through the shared create/update mapper with durable audit | DONE |
+| restart/remove single backend | `DOCKER_RESTART` / `DOCKER_REMOVE` | Existing single-service commands with durable audit | DONE |
+| `POST /api/docker/service/restart` / `POST /api/docker/service/remove` | `DOCKER_RESTART` / `DOCKER_REMOVE` | Non-empty `serviceIds`; sequential per-service success/error results without aborting the batch | DONE |
+| restart/remove selected UI | operation-specific | Shared one-or-many selection; separate confirmation, result feedback and refresh | DONE |
+| service stats/tag | `DOCKER_VIEW` | Raw stats plus normalized metrics/tag; no end-user statistics UI | PARTIAL |
 
 ### Tasks, logs and terminal
 
@@ -31,9 +32,9 @@
 | `GET /api/docker/task/:taskId/logs?tail=` | `DOCKER_LOGS` | Snapshot, tail 1..2000 | DONE |
 | `WS /api/docker/task/:taskId/logs/stream` | `DOCKER_LOGS` | JWT via bearer subprotocol; one filter-start frame | DONE |
 | `GET /api/docker/logs/:stack/:service` | `DOCKER_LOGS` | Snapshot from the first normalized running task; `null` when none is running | DONE |
-| task/service stats | `DOCKER_VIEW` | Raw Docker stats; no normalized DTO or UI | PARTIAL |
+| task/service stats | `DOCKER_VIEW` | `{task, stats, metrics}`; local daemon or task-node mTLS agent; remote/invalid sample failure 503; polling chart UI implemented; distinct-worker/browser proof pending | PARTIAL |
 | terminal ticket + local-daemon `WS /api/docker/terminal` | `DOCKER_TERMINAL` | One-use 60s ticket, origin/shell/size/time limits | DONE |
-| terminal against a remote worker | `DOCKER_TERMINAL` | No proven distributed execution transport | PARTIAL |
+| terminal against a remote worker | `DOCKER_TERMINAL` | Task-selected binary mTLS agent relay with node/task/container checks; distinct-worker browser proof pending | PARTIAL |
 
 Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclude string arrays. Exclusions win. Include entries are AND groups; comma-separated terms within a group are OR. `*` is wildcard; malformed regex falls back to substring.
 
@@ -42,15 +43,19 @@ Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclud
 | Contract | Permission | Status/notes |
 |---|---|---|
 | `GET /api/docker/nodes` normalized snapshot | `DOCKER_NODES_FETCH` | DONE |
+| `GET /api/docker/version` | `DOCKER_VIEW` | DONE; `{Version,ApiVersion}` only |
+| `GET /api/docker/cluster` | `DOCKER_VIEW` | DONE; `{nodesQuantity,servicesQuantity,tasksQuantity}`; unfiltered list lengths, including all retained historical tasks; failed Docker reads fail the request rather than returning partial totals |
 | Network list/detail | `DOCKER_NETWORK_VIEW` | DONE |
 | Network create/get-or-create | `DOCKER_NETWORK_CREATE` (+ view for get-or-create) | PARTIAL |
 | Network replace/remove backend | update/remove | DONE |
 | Network mutation audit/safety parity | update/remove | PARTIAL |
-| `GET /api/docker/ghostContainers` transport/page contract | `DOCKER_VIEW` | DONE |
-| Ghost detection behavior | `DOCKER_VIEW` | PARTIAL |
+| `GET /api/docker/ghostContainers` local running-container reconciliation | `DOCKER_VIEW` | DONE |
+| Cluster-wide ghost collection through `GET /api/docker/ghostContainers` | `DOCKER_VIEW` | PARTIAL; manager-local plus mTLS worker inventories; `503` instead of an incomplete list when any remote scan fails; second-worker API/browser proof pending |
 | `POST /api/docker/folders` local confined contract | `DOCKER_UPDATE` | DONE |
 | All-node folder provisioning | `DOCKER_UPDATE` | PARTIAL |
 | `POST /api/docker/files` local confined/awaited contract | `DOCKER_UPDATE` | DONE |
+
+Ghost reconciliation follows Docker Engine API v1.51 [`ContainerList`](https://docs.docker.com/reference/api/engine/version/v1.51/#tag/Container/operation/ContainerList) (`all=false` returns running containers) and [`TaskList`](https://docs.docker.com/reference/api/engine/version/v1.51/#tag/Task/operation/TaskList) (`Status.State`, `Status.ContainerStatus.ContainerID`, and `NodeID`).
 
 ### Integrations
 
@@ -65,28 +70,78 @@ Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclud
 - Registration/recovery/avatar routes may exist transitively but are not operationally complete without email, multipart and file/base URL configuration.
 - `GET /api/services/health` requires `DOCKER_VIEW`; legacy public `/status` parity is absent.
 - `/documentation` exposes generated OpenAPI.
+- Compiled GraphQL compatibility loads `.resolvers.js`; source development loads `.resolvers.ts`. Both GraphQL Tools packages are direct backend dependencies and the production build asserts the service resolvers are present.
 
 ## Legacy contracts that require migration or decision
 
 | Capability | Legacy contract | Target decision |
 |---|---|---|
-| Docker version | GraphQL `fetchDockerVersion` | Add protected minimal REST only if retained |
-| Cluster totals/topology | GraphQL aggregate queries | Define active vs historical task count and avoid N+1 |
-| Task inspect | GraphQL JSON | Define redacted DTO/permission before endpoint |
-| Agent health/containers | GraphQL backed by HTTP agent | Depends on shared remote-node architecture |
-| Derived stats | GraphQL/REST normalized metrics | Define stable normalized DTO before UI |
-| Monitoring configuration/history | GraphQL CRUD/actions | Full persisted Drax entity plus custom action/history APIs if retained |
+| Cluster topology | GraphQL node/task aggregate | CLU-01 totals migrated; CLU-02 topology and selectable polling remain missing |
+| Task inspect | GraphQL JSON | Implemented as protected `GET /api/docker/task/:taskId/inspect`; preserves structure while redacting command/args, environment and label values |
+| Agent health | `GET /api/docker/nodes` includes nullable `agentHealthy` | Backend-to-agent `/health` uses mTLS and matches the returned node ID |
+| Agent containers | GraphQL backed by HTTP agent | Implemented `GET /containers/running` over mTLS: `{nodeId, containers}`; node ID and consumed fields validated; 2s deadline and 8 MiB response limit. Authenticated remote ghost reconciliation passed on `debianvm` |
+| Derived stats | REST task/service `metrics` | CPU percentage/core count, total memory bytes, cumulative disk/network bytes; authenticated remote API and four-chart browser proof passed on `debianvm` |
+| Monitoring configuration/history | GraphQL creation/list/actions; unused edit helper | MON-01 configuration REST plus MON-02 protected sample history below; real Docker/database/browser and distinct-worker proof pending |
 | Task lifecycle history | GraphQL list | Define event semantics and retention first |
 | Operational audit | Dracul GraphQL | Choose Drax-compatible persisted sink/read API |
 | Settings/customization | Dracul generic APIs | Add only accepted product-specific contracts |
-| LDAP/refresh token | Dracul auth behavior | Explicit compatibility/product decision |
+| LDAP | Dracul LDAP fallback/group mapping | Deferred until Drax implements native LDAP support; no parallel ContainerHub adapter |
+| Existing local users/refresh token | Dracul bcrypt users and persisted refresh tokens | Prove shared-Mongo local-user login; assess refresh-token compatibility separately from LDAP |
+
+## MON-01 configuration REST
+
+Base: `/api/monitoring-configurations`. All routes require authentication.
+
+| Operation | Permission | Contract |
+|---|---|---|
+| `GET /` | `DOCKER_VIEW` | Drax `{items,total,page,limit}`; query `page` >=1, `limit` 1..100, `search` case-insensitive service name, `order` asc/desc, `orderBy` serviceName/status/collectionInterval/createdAt. No arbitrary field/filter expressions. |
+| `GET /:id` | `DOCKER_VIEW` | Persisted configuration; absent ID returns 404. |
+| `GET /statuses` | `DOCKER_VIEW` | Query `serviceIds` comma-separated; returns existing `{serviceId,status}` entries without deriving them from a paginated list. |
+| `POST /` | `DOCKER_MONITORING_CREATE` | `{serviceIds,type,collectionInterval,collectionType,since?,until?,holdingTime?}`; names/stack resolved from current Docker service inventory, not accepted from the browser. Returns `{created,skipped}`; an existing configuration is never overwritten/reactivated. |
+| `POST /:id/pause`, `POST /:id/resume` | `DOCKER_MONITORING_PAUSE` | Empty body; returns configuration with `paused` / `monitoring`. Idempotent desired-state changes, not proof that a collector is running. |
+| `DELETE /:id` | `DOCKER_MONITORING_DELETE` | Drax deletion response; deletes configuration only, never the Docker service. |
+
+Configuration fields: `_id`, `serviceId`, `serviceName`, nullable `serviceStack`, `type`, `status`, `collectionInterval`, `collectionType`, nullable `since/until/holdingTime`, `createdAt/updatedAt`.
+Intervals: `15s/30s/45s/60s`; replica scope: `replic/global`; modes: `calendar/permanent`. Calendar uses date-only `YYYY-MM-DD` with `since < until`; permanent requires a positive integer retention in days. Inactive-mode fields persist as null. Status is stored intent (`monitoring/paused`), while collector execution remains internal rather than introducing a third persisted status.
+
+Malformed input returns 400; missing selected Docker services return 404 before creating any configuration. Service uniqueness is database-enforced. Batch creation remains sequential (not transactional); an unexpected storage failure is returned, and retry skips configurations already saved. No general update endpoint or edit UI: legacy's update helper had no consumer.
+
+## MON-02 sample history
+
+`GET /api/monitoring-configurations/:id/samples` requires `DOCKER_VIEW` and returns `{items}` newest-first. Optional `since`/`until` are dates and `limit` is 1..1000 with default 500. Deleting a configuration also deletes its samples. The collector prevents overlapping scans, re-discovers replacement tasks, stores normalized metrics keyed by configuration/task/sample time and applies bounded holding-time retention. Repository checks pass; current real Docker/database/browser and distinct-worker proof is still pending.
+
+OpenAPI currently provides route/auth metadata for these operations; the request/response contract above is not a claim of fully generated operation schemas.
 
 ## Known contract defects and incompatibilities
 
-1. Current ghost endpoint name/response does not match ghost semantics.
-2. Service create/update network and health-check option placement is not live-proven.
-3. Runtime Fastify validation is disabled despite OpenAPI schemas.
-4. GraphQL resolver loading searches `.resolvers.ts`; compiled production files are `.resolvers.js`.
-5. `@graphql-tools/load-files` and `@graphql-tools/merge` are direct imports but only transitively installed.
-6. Current Drax access-token model does not implement legacy persisted refresh-token behavior.
-7. GitLab/Registry use `{items,totalItems}`/catalog shapes rather than the Drax pagination contract; this is acceptable for their custom read-only pages unless common pagination is needed.
+1. Current Drax access-token model does not implement legacy persisted refresh-token behavior.
+2. GitLab/Registry use `{items,totalItems}`/catalog shapes rather than the Drax pagination contract; this is acceptable for their custom read-only pages unless common pagination is needed.
+
+Service network, resource, restart and rollout placement follows Docker Engine API v1.51 [`ServiceCreate`](https://docs.docker.com/reference/api/engine/version/v1.51/#tag/Service/operation/ServiceCreate) and [`ServiceUpdate`](https://docs.docker.com/reference/api/engine/version/v1.51/#tag/Service/operation/ServiceUpdate). Networks belong under `TaskTemplate.Networks`; top-level `ServiceSpec.Networks` is deprecated since API v1.44.
+
+Docker version fields follow Docker Engine API v1.51 [`SystemVersion`](https://docs.docker.com/reference/api/engine/version/v1.51/#tag/System/operation/SystemVersion).
+
+## STAT-01 normalized metrics
+
+`GET /api/docker/task/:taskid/stats` returns `{task, stats, metrics}`. Both service variants
+(`GET /api/docker/service/id/:serviceId/stats` and `GET /api/docker/service/:serviceName/stats`)
+return an array of the same envelope. Existing raw `task`/`stats` fields are retained.
+Tasks without a container retain their entry with `stats: null, metrics: null`.
+
+| Metric | Meaning |
+|---|---|
+| `sampledAt` | Daemon sample's `read`, or null when absent |
+| `cpuUsage.cpuPercentage` | CPU/system deltas times online cores times 100; null for missing/reset counters or a nonpositive system delta |
+| `cpuUsage.cpuCoreQuantity` | Online cores, falling back to the per-CPU array length; null when absent |
+| `memoryUsage.memoryTotalUsage` / `memoryLimitUsage` | Total usage (including cache) / limit in bytes, preserving legacy chart semantics; null when absent |
+| `ioUsage.readIoBytes` / `writeIoBytes` | Cumulative bytes summed across all devices, matching read/write case-insensitively; null when counters are absent, zero for a reported empty list |
+| `networksUsage[]` | One `{network, rxBytes, txBytes}` per reported interface; cumulative bytes, not bytes/second; empty when none are reported |
+
+CPU calculation, fallback and cgroup field differences follow the official
+[Docker Engine v1.47 ContainerStats contract](https://docs.docker.com/reference/api/engine/version/v1.47/#tag/Container/operation/ContainerStats)
+([versioned source, inspected](https://github.com/moby/moby/blob/v27.5.1/docs/api/v1.47.yaml#L7693-L7722)).
+The normalizer validates consumed numbers as finite/nonnegative. Malformed samples return 503;
+missing measurements remain nullable instead of inventing zero usage. One remote failure rejects
+the service request rather than returning an apparently complete partial snapshot.
+
+Verification: current full backend discovery executes 80 tests (79 pass, one opt-in live-terminal skip), frontend executes 23 passing tests, agent executes 6 passing tests, and all three builds pass. A temporary global agent deployment then returned 200 stats for the exact container of a task pinned to `debianvm`; authenticated Chromium rendered its four normalized charts. STAT-01 and STAT-02 are DONE.

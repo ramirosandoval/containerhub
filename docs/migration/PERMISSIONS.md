@@ -35,12 +35,25 @@ Evidence: `docker-fortes/apps/backend/src/modules/docker/permissions/dockerPermi
 
 ## Legacy product roles
 
-Legacy seeds Sudo, Implementaciones, Infraestructura, Desarrollo, Dirección, PM, QA and Soporte, plus framework roles. The exact bundles are product policy. Current ContainerHub seeds only `Admin` and assigns it only Docker permissions.
+RBAC-02 approved scope: migrate only the Docker portion of the legacy product bundles. Admin remains unchanged; no identity administration permissions are added to Sudo or any other role.
 
-Required decision before identity administration or LDAP migration:
+| Seeded role | Docker permissions |
+|---|---|
+| Sudo, Implementaciones, Desarrollo | `DOCKER_VIEW`, `DOCKER_REMOVE`, `DOCKER_LOGS`, `DOCKER_TERMINAL`, `DOCKER_RESTART`, `DOCKER_CREATE`, `DOCKER_UPDATE` |
+| Infraestructura, Direccion, PM, QA | `DOCKER_VIEW`, `DOCKER_REMOVE`, `DOCKER_LOGS`, `DOCKER_TERMINAL` |
+| Soporte | None: its only legacy grant was `SECURITY_GROUP_SHOW`, not a Docker grant |
+| Admin | All currently registered Docker permissions, unchanged |
 
-1. Which legacy roles still exist?
-2. Which Drax `user:*`, `role:*`, `tenant:*` permissions should each receive?
+`DOCKER_CONSOLE` maps to the existing `DOCKER_TERMINAL` capability. Legacy `sudo` becomes `Sudo` because the installed Drax role schema requires an uppercase initial; `Direccion` keeps its actual legacy spelling. Product bundles do not gain node/network permissions absent from their original seeds. Bootstrap still assigns Admin only when explicitly enabled; this does not import legacy users or reassign existing users.
+
+Evidence: legacy `apps/backend/src/init/custom/roles/init*Role.js` and `init/InitService.js:54`; target `packages/containerhub-back/src/setup/SetupContainerHub.ts`; installed `node_modules/@drax/identity-back/src/schemas/RoleSchema.ts` and `setup/CreateOrUpdateRole.ts`. Drax handles persistence. Sudo/Admin are readonly and refreshed in place; existing editable roles are preserved, including administrator permission changes. This follows the installed legacy guard at `docker-fortes/apps/backend/node_modules/@dracul/user-backend/src/services/InitService.js:209-211` (also present in the [published Dracul 1.46.0 initializer](https://unpkg.com/@dracul/user-backend@1.46.0/lib/services/InitService.js)).
+
+Verification: `packages/containerhub-back/src/setup/__tests__/LegacyDockerRoles.test.ts` runs real setup against temporary SQLite, checks exact persisted bundles/IDs over repeated startup and Drax permission evaluation, exercises the actual health route with JWT/RBAC using Fastify injection (allowed 200, authenticated-denied 403, anonymous 401), and verifies a revoked QA grant stays revoked after restart. This is repository/API-injection proof, not browser or deployed MongoDB proof.
+
+Required decisions before identity administration; LDAP itself is deferred until Drax implements it:
+
+1. Whether the remaining non-Docker legacy grants survive (RBAC-02 remains partial for these).
+2. Which Drax `user:*`, `role:*`, `tenant:*` permissions should each receive? None are granted by this slice.
 3. Do legacy groups still carry business meaning?
 4. Is Drax tenancy part of this product or merely framework capability?
 5. How do LDAP groups map after role names/permissions change?
@@ -49,10 +62,10 @@ Required decision before identity administration or LDAP migration:
 
 | Capability | Legacy permission | Current state | Required decision |
 |---|---|---|---|
-| Task inspect | `DOCKER_VIEW` | Missing | Raw vs redacted output and whether broad view is sufficient |
-| Cluster/version | `DOCKER_VIEW` | Missing | Reuse view or define narrower diagnostics permission |
-| Monitoring read | `DOCKER_VIEW` | Missing | Whether historical operational data needs its own read permission |
-| Monitoring mutations | `DOCKER_MONITORING_CREATE/PAUSE/DELETE` | Missing | Preserve names/semantics if feature survives |
+| Task inspect | `DOCKER_VIEW` | Protected redacted REST/page implemented | Authenticated browser rerun remains before DONE |
+| Cluster/version | `DOCKER_VIEW` | Aggregate summary and version migrated | Reuses legacy view permission; topology remains CLU-02 |
+| Monitoring read | `DOCKER_VIEW` | MON-01 configuration and MON-02 sample-history API/pages enforced | Real collector/database/browser proof remains for MON-02 |
+| Monitoring mutations | `DOCKER_MONITORING_CREATE/PAUSE/DELETE` | MON-01 API/buttons enforced; resume uses PAUSE | Registered and granted to Admin; other existing role bundles unchanged |
 | GitLab | Authenticated GraphQL; unguarded REST | `DOCKER_VIEW` | Keep Docker coupling or add integration-read permission |
 | Registry | Authenticated GraphQL; unguarded REST | `DOCKER_VIEW` | Keep Docker coupling or add integration-read permission |
 | Ghost detection | `DOCKER_VIEW` UI; unguarded REST | `DOCKER_VIEW` | Keep read-only; any future delete requires a new explicit permission |

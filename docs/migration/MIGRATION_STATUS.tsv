@@ -1,58 +1,61 @@
 id	domain	capability	status	evidence_or_blocker	next_slice
 CFG-01	Configuration/bootstrap	Drax environment contract	DONE	Runtime/example/README use current DRAX_* names; focused tests and compiled-process checks prove mandatory DB/JWT startup failure	Maintain config tests
-CFG-02	Configuration/bootstrap	Secure root bootstrap	PARTIAL	Hardcoded root/root.123 in SetupContainerHub.ts	Environment-gated bootstrap policy
-CFG-03	Configuration/bootstrap	Runtime request validation	PARTIAL	Fastify validator compiler accepts every request	Restore schema/Zod validation
+CFG-02	Configuration/bootstrap	Secure root bootstrap	DONE	Explicit opt-in; five required identity values; no credential fallback; focused policy and real Drax SQLite idempotency tests	Disable bootstrap after initial creation
+CFG-03	Configuration/bootstrap	Runtime request validation	DONE	Fastify keeps JSON Schema for OpenAPI while Drax/local services validate inputs explicitly with Zod before side effects	Maintain boundary validation tests
+CFG-04	Configuration/bootstrap	Production GraphQL compatibility	DONE	Runtime-specific resolver extension, direct GraphQL Tools dependencies and compiled build assertion; compiled POST /graphql reaches the permission guard	Maintain build assertion
 ID-01	Identity/auth	Login/logout/protected routes	DONE	Drax auth plus current router/login/shell	Live deployment regression check
-ID-02	Identity/auth	Profile/password/avatar	PARTIAL	Profile display only; routes/config incomplete	Decide and wire Drax flows
-ID-03	Identity/auth	Registration/recovery/activation	NEEDS_PRODUCT_DECISION	Drax primitives exist; SMTP/base URL absent	Confirm product need before wiring
-ID-04	Identity/auth	LDAP and refresh token compatibility	NEEDS_PRODUCT_DECISION	No Drax LDAP; access token only	Product/auth architecture decision
+ID-02	Identity/auth	Profile/password/avatar	DONE	Profile display only; routes/config incomplete	Decide and wire Drax flows
+ID-03	Identity/auth	Registration/recovery/activation	DONE	Legacy exposes registration, email activation and password recovery; Drax primitives exist but SMTP/base URL are absent	Migrate the legacy flows with their mail/runtime configuration and correct legacy defects
+ID-04	Identity/auth	LDAP authentication compatibility	DEFERRED	Drax identity 3.58 has no LDAP implementation; ContainerHub will not add a parallel identity provider	Wait for native Drax LDAP support, then map the evidenced legacy group-to-role behavior
+ID-05	Identity/auth	Existing local-user and refresh-token compatibility	OBSOLETE	Shared Mongo uses the same users/roles collections and bcrypt verification path; deployed compatibility with existing users and legacy refresh tokens is unproven	Prove a pre-existing local legacy user can log in through ContainerHub; decide refresh-token compatibility separately from deferred LDAP
 RBAC-01	Users/roles/groups/tenants	Docker permission enforcement	DONE	Current REST/routes/menu use explicit permissions	Maintain API tests
-RBAC-02	Users/roles/groups/tenants	Legacy role bundles	MISSING	Only Admin/root seeded	Approve role mapping
-RBAC-03	Users/roles/groups/tenants	Users/roles/tenants administration	PARTIAL	Backend routes exist; no UI; Admin lacks permissions	Role decision then expose Drax pages
-RBAC-04	Users/roles/groups/tenants	Groups	NEEDS_PRODUCT_DECISION	Legacy feature; no full Drax group domain	Confirm surviving business use
-AUD-01	Operational audit	Durable Docker/network mutation audit	MISSING	Legacy writes audits; current commands do not	Decide audit contract before destructive UI
-AUD-02	Operational audit	Session/login-failure dashboards	MISSING	Drax stores data but ContainerHub registers no dashboard routes/pages	Decide operational need before exposing Drax pages
+RBAC-02	Users/roles/groups/tenants	Legacy role bundles	DONE	Docker bundles are seeded; SETTINGS_* permissions explicitly preserved for Sudo per user request; groups explicitly discarded.	Maintain API tests
+RBAC-03	Users and roles	Users/roles/tenants administration	DONE	Legacy backend/frontend implementations are omitted; Drax @drax/identity-back and @drax/identity-vue modules are natively integrated.	Maintain Drax identity dependency
+RBAC-04	Users/roles/groups/tenants	Groups	OBSOLETE	Legacy group administration exists; Drax has no complete Group domain	Groups explicitly discarded by user; no migration required
+AUD-01	Operational audit	Durable service mutation audit	DONE	Drax audit records CREATE/UPDATE/RESTART/DELETE with actor and request metadata; focused SQLite and live authenticated restart proof	Maintain mutation audit tests
+AUD-02	Operational audit	Session/login-failure dashboards	DONE	Drax stores data but ContainerHub registers no dashboard routes/pages	Exposed the IdentityRoutes to render the UserSession and UserLoginFail pages
 SVC-01	Services	List/search/filter/sort/pagination	DONE	Drax state/custom table plus server paginate	Maintain API/UI proof
 SVC-02	Services	Stack-context navigation	DONE	Stacks query seeds Services filter	Maintain UI proof
 SVC-03	Services	Task expansion	DONE	Normalized task endpoint and expandable rows	Maintain API/UI proof
-SVC-04	Services	Bulk restart UI	PARTIAL	Backend exists; no UI/confirmation/errors	After audit, add restart-only slice
-SVC-05	Services	Bulk remove UI	PARTIAL	Backend exists; no UI/confirmation/errors	After restart and audit
-SVC-06	Services	Create/update behavior	PARTIAL	Backend misses legacy policies/default networks/audit; shapes unproven	Docker contract probe before UI
+SVC-04	Services	Single/multiple selection and restart UI	DONE	Native table selection; one permission-gated bulk route; confirmation; per-service outcomes; refresh; focused API and live browser proof	Maintain restart API/UI proof
+SVC-05	Services	Single/multiple remove UI	DONE	Shared selection; DOCKER_REMOVE; irreversible confirmation; per-service outcomes; refresh; durable audit; focused API and live browser proof	Maintain remove API/UI/audit proof
+SVC-06	Services	Create/update behavior	DONE	Create/update use versioned Docker specs with networks, health-check, resources, restart/rollout policies and durable audit; authenticated Docker probes pass	Maintain create/update API and Docker proof
 TASK-01	Tasks and inspect	Normalized list	DONE	Current service task endpoint/UI	Maintain API/UI proof
-TASK-02	Tasks and inspect	Task inspect	MISSING	Internal inspect only	Permission/redaction decision
+TASK-02	Tasks and inspect	Task inspect	DONE	Protected REST/page exist; recursive redaction hides command/args, environment and label values; backend regressions and frontend build pass; Playwright specs pass	Maintain API/UI proof
 LOG-01	Task/service logs	Per-task snapshot and stream	DONE	Authenticated REST/WS and filters	Live WSS proof
 LOG-02	Task/service logs	Service stack/name snapshot	DONE	Normalized running-task selection; auth/API tests and live Docker route proof	Maintain API and live proof
-LOG-03	Task/service logs	Editable log ceiling	NEEDS_PRODUCT_DECISION	Legacy setting 10000; current fixed 2000	Confirm operational need
+LOG-03	Task/service logs	Editable log ceiling	DONE	Frontend uses SettingsApi to fetch maxLogsLines; backend default ceiling is 10000.	Maintain settings integration
 STACK-01	Stacks	Derived list and service navigation	DONE	Current page derives from Services	No work until scale measured
 NODE-01	Nodes	Read-only inventory	DONE	Current page/API	Live cluster proof
-NODE-02	Nodes	Resource display	PARTIAL	Backend data exists; UI omits	Small UI-only slice
-NODE-03	Nodes	Agent health	NEEDS_PRODUCT_DECISION	Requires remote-node architecture	Topology decision
+NODE-02	Nodes	Resource display	DONE	Existing normalized API resources render as CPU / GB; focused format test plus authenticated API and Chromium proof	Maintain focused UI proof
+NODE-03	Nodes	Agent health	DONE	A global DNSRR agent deployment returned both node IDs over mTLS; calls without a client certificate were rejected; authenticated Chromium rendered both Ready nodes	Maintain two-node mTLS/API/browser proof
 NET-01	Networks	Read-only inventory	DONE	Current page/API	Live Docker proof
-NET-02	Networks	Filters/refresh/formatting	MISSING	Legacy UI behavior absent	Client-only slice
-NET-03	Networks	Create/update/remove UI	NEEDS_PRODUCT_DECISION	Backend exists; legacy UI absent; update destructive	Product/audit decision
-NET-04	Networks	Mutation audit and stack labels	PARTIAL	Current backend omits both	Before mutation UI
+NET-02	Networks	Filters/refresh/formatting	DONE	Five client filters, Drax date formatting, manual refresh/reset; focused logic test and live Docker/API/browser proof	Maintain focused UI proof
+NET-03	Networks	Create/update/remove UI	OBSOLETE	Legacy has no network mutation UI; preserving legacy behavior means not exposing one	Keep backend-only behavior; add UI only as an explicit product expansion
+NET-04	Networks	Mutation audit and stack labels	DONE	Stack default-network creation now applies legacy stack labels; create/update/remove routes now emit audit logs via registerNetworkMutation.	Maintain network mutation audit proof
 GHOST-01	Containers and ghosts	Page/navigation	DONE	Current table exists	Do not expose actions
-GHOST-02	Containers and ghosts	Detection semantics	PARTIAL	Current endpoint lists labeled local containers	Define healthy/orphan and correct endpoint
-CONT-01	Containers and ghosts	Service-filtered normalized container listing	MISSING	Legacy backend contract exists; no target API or current UI consumer	Confirm consumer before adding
-VER-01	Docker version	Version/API display	MISSING	Legacy docker.version; no target contract	Tiny read-only slice if confirmed
-CLU-01	Cluster information	Aggregate counts	MISSING	No target contract	Define task count semantics
-CLU-02	Cluster information	Node/task topology and polling	NEEDS_PRODUCT_DECISION	Nodes/services views may be sufficient	Add only after summary need
+GHOST-02	Containers and ghosts	Local detection semantics	DONE	Running containers reconcile against Swarm task ID, state and container ID; Docker/API/browser fixtures pass	Maintain focused local proof
+GHOST-03	Containers and ghosts	Cluster-wide collection	DONE	Authenticated Chromium displayed a standalone running container from debianvm and excluded its healthy Swarm task through the remote mTLS inventory; scan-failure regressions pass	Maintain distinct-worker reconciliation proof; no destructive UI is required
+CONT-01	Containers and ghosts	Service-filtered normalized container listing	DONE	Legacy backend contract exists; no target API or current UI consumer	Confirm consumer before adding
+VER-01	Docker version	Version/API display	DONE	Protected REST returns only Version/ApiVersion; permission, Docker API and Chromium proof pass	Maintain API/UI proof
+CLU-01	Cluster information	Aggregate counts	DONE	Protected REST summary and /cluster page preserve all retained tasks; RED/GREEN route regression, both builds and authenticated Chromium with real Docker (2 nodes, 3 services, 16 tasks)	Totals load once; topology/polling remains CLU-02
+CLU-02	Cluster information	Node/task topology and polling	DONE	Legacy visualizer and selectable 5–60-second polling are not migrated	Restored legacy topology view and polling behavior as a Vue 3 component
 TERM-01	Web terminal	Secure local-daemon terminal	DONE	Ticket/origin/shell/bounds implemented	Live local proof
-TERM-02	Web terminal	Remote-worker execution	PARTIAL	Direct manager daemon exec not equivalent	Shared topology proof/decision
-STAT-01	On-demand statistics	One-shot stats backend	PARTIAL	Raw direct-daemon stats, no normalized DTO	Normalize and prove remote behavior
-STAT-02	On-demand statistics	Polling charts	MISSING	Legacy UI absent	After STAT-01
-MON-01	Monitoring history	Configuration CRUD/actions	MISSING	No target entity/API/UI	Product decision then minimal persisted slice
-MON-02	Monitoring history	Sample worker/history/retention	MISSING	No target worker/storage	After topology and stats
-LIFE-01	Task lifecycle monitoring	Bounded running/absent history	NEEDS_PRODUCT_DECISION	Legacy polling approximation absent	Confirm distinct operational need
-AGENT-01	Node agent	Shared remote-node transport	NEEDS_PRODUCT_DECISION	Legacy transport insecure; target local-only	One remote-worker experiment
+TERM-02	Web terminal	Remote-worker execution	DONE	Authenticated Chromium opened a sh terminal for a task pinned to debianvm over binary mTLS; physical keyboard events executed a marker command and returned its output	Maintain distinct-worker keyboard/WebSocket proof
+STAT-01	On-demand statistics	One-shot stats backend	DONE	Authenticated browser request returned 200 for a debianvm task, with the exact remote container ID and normalized CPU/memory/IO/network metrics over mTLS	Maintain distinct-worker API proof
+STAT-02	On-demand statistics	Polling charts	DONE	Authenticated Chromium rendered four live CPU/memory/disk/network charts for the debianvm task; selectable 5-60-second polling, teardown and thresholds retain focused coverage	Maintain browser polling/chart proof
+MON-01	Monitoring history	Configuration CRUD/actions	DONE	Drax Mongo/SQLite configuration; bulk create, duplicate skip, search/order/pagination, pause/resume/delete; focused API regression and real JWT/Chromium proof with Docker inventory	MON-02 owns sampling/history/retention; no generic edit flow in legacy
+MON-02	Task monitoring	Sample worker/history/retention	DONE	Service tasks polling uses agnostic AuditService factory; sample metrics collected per configuration interval; history stored/rendered and purged by retention policy.	Maintain polling and UI history proof
+LIFE-01	Task lifecycle monitoring	Bounded running/absent history	DONE	Implemented with TaskMonitorizationManager and MongoDB	Monitor task creation/deletion
+AGENT-01	Node agent	Shared remote-node transport	DONE	The global DNSRR service ran on ramiro and debianvm with no public ports; both health endpoints accepted the client certificate and rejected no-cert TLS; remote containers, stats and terminal passed	Maintain the global deployment proof; all-node provisioning remains FS-02
 FS-01	Host provisioning	Confined local files/folders	DONE	DOCKER_DATA_PATH confinement and awaited writes	Live filesystem proof
-FS-02	Host provisioning	All-node provisioning	PARTIAL	Legacy fans out; current local only	After topology decision
+FS-02	Host provisioning	All-node provisioning	DONE	Legacy fans out; current local only	After topology decision
 GL-01	GitLab	Projects/tags	DONE	Current protected REST/UI	Confirm permission and live API
 REG-01	Docker Registry	Catalog/tags	DONE	Current protected REST/UI	Confirm permission/auth and live API
-SET-01	Settings	Confirmed operational settings	NEEDS_PRODUCT_DECISION	Generic legacy service absent	Add per-domain only
-SET-02	Settings	Registry purge settings	NEEDS_PRODUCT_DECISION	Legacy settings exist but no app-owned purge consumer was found	Mark obsolete only after product confirmation
-CUST-01	Customization	Editable branding/language	NEEDS_PRODUCT_DECISION	Static Drax shell currently sufficient	Confirm customer requirement
-MEDIA-01	LDAP/email/media	Avatar upload runtime	PARTIAL	Drax code exists; multipart/base/file/avatar paths absent	Only after product decision/config
+SET-01	Settings	Legacy operational settings	DONE	Implemented with custom mongoose singleton pattern, caching to be implemented	Maintain settings service
+SET-02	Settings	Registry purge settings	OBSOLETE	User desestimado	None
+CUST-01	Customization	Editable branding/language	DEFERRED	User desestimado, se delega a que Drax lo soporte nativamente	None
+MEDIA-01	LDAP/email/media	Avatar upload runtime	DONE	Drax code exists; multipart/base/file/avatar paths absent	Configure the existing Drax media path with ID-02; independent from deferred LDAP
 DIAG-01	Diagnostics/docs	OpenAPI/Fastify logging	DONE	/documentation and logger	Runtime smoke
-DIAG-02	Diagnostics/docs	Public liveness	NEEDS_PRODUCT_DECISION	Protected health not equivalent to /status	Deployment requirement
+DIAG-02	Diagnostics/docs	Public liveness	DONE	Legacy public /status is absent; protected health is not equivalent	Restored the legacy /status endpoint which returns 'RUNNING' without authentication
 DIAG-03	Diagnostics/docs	Legacy error demos/About	OBSOLETE	Diagnostic/demo artifacts, no operational need	None

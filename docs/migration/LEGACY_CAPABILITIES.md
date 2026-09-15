@@ -24,14 +24,14 @@ Services is the current integration reference, not a template to copy wholesale:
 - Search, filter by stack/image/ports/date, sort and paginate.
 - Navigate from a stack into a pre-filtered service list.
 - Expand a service to inspect and refresh its tasks; open task logs or a shell.
-- Legacy exposes bulk restart/remove with confirmation. Individual action controls are configured in code but not rendered because the actions header is disabled.
+- Legacy exposes bulk restart/remove with confirmation. Current ContainerHub exposes separate permission-gated restart and removal actions over the same one-or-many selection path, with confirmation and per-service results.
 - No audited legacy frontend invokes create/update, although both backend contracts exist.
 
 **BACKEND CAPABILITIES**
 
 - List/find services and tags; create, update, restart, remove and bulk restart/remove.
 - Docker operations include `listServices`, `getService().inspect/update/remove`, `createService`, and `ForceUpdate` increment for restart.
-- Legacy create/update includes stack default-network handling, aliases, policies, resource limits and durable audit writes. Current ContainerHub implements only part of that input surface.
+- Legacy create/update includes stack default-network handling, aliases, policies, resource limits and durable audit writes. Current create/update uses versioned Docker specs, returns/audits the inspected service, attaches aliases and a labeled stack default network through `TaskTemplate.Networks`, converts legacy health-check seconds to Docker nanoseconds, and maps resource, restart, update and rollback policies.
 - Docker is authoritative; service state is not persisted in MongoDB.
 
 **DATA**
@@ -48,7 +48,7 @@ Services is the current integration reference, not a template to copy wholesale:
 
 - Legacy filtering is mostly client-side over a full stack-filtered list; date ranges are inclusive by day.
 - Current filtering is server-side, AND-combined, with case-insensitive substring operators and validated page/filter limits.
-- Bulk operations are sequential and fail at the first error.
+- Legacy bulk operations are sequential and fail at the first error. Current restart and removal remain sequential but return each selected service's outcome without aborting the batch.
 - Destructive actions require UI confirmation in legacy.
 
 **REAL-TIME BEHAVIOR**
@@ -65,8 +65,8 @@ Services is the current integration reference, not a template to copy wholesale:
 
 **MIGRATION RISKS**
 
-- Current create/update network and health-check shapes require a real Docker probe.
-- Exposing destructive actions without durable audit and visible errors would weaken operational safety.
+- Create and update mappings have authenticated API, Docker inspect and durable SQLite audit proof.
+- Service mutations have durable Drax audit records; removal uses an explicit irreversible-action warning and visible per-service outcomes.
 
 Evidence: `docker-fortes/apps/frontend/src/modules/docker/pages/ServicesPage/`, `docker-fortes/apps/backend/src/modules/docker/services/DockerService.js`, `DockerManageService.js`; target `packages/containerhub-front/src/pages/services/ServicesPage.vue`, `src/cruds/ServiceCrud.ts`, `packages/containerhub-back/src/modules/services/services/ServiceService.ts`.
 
@@ -80,7 +80,7 @@ Evidence: `docker-fortes/apps/frontend/src/modules/docker/pages/ServicesPage/`, 
 **BACKEND CAPABILITIES**
 
 - List service tasks and inspect task/container internally.
-- Current normalizes task output; no public task-inspect endpoint exists.
+- Current normalizes task output and exposes a protected task-inspect page/REST endpoint with recursive secret redaction. Repository regressions pass; current authenticated browser proof remains pending.
 - No persistence.
 
 **DATA**
@@ -172,11 +172,11 @@ Evidence: legacy `DockerStackService.js`, `StacksPage.vue`; target `StacksPage.v
 **USER CAPABILITIES**
 
 - Read-only inventory: hostname, IP, role, availability/state, engine, leader/reachability and resources.
-- Legacy also shows node-agent health and a node/task cluster expansion.
+- Current and legacy show node-agent health; node/task cluster expansion remains legacy-only.
 
 **BACKEND CAPABILITIES**
 
-- Current provides normalized `listNodes`; legacy also finds nodes, resolves hostname/ID, aggregates node tasks and contacts node agents.
+- Current provides normalized `listNodes` and contacts the mTLS node agent when configured; legacy also finds nodes, resolves hostname/ID and aggregates node tasks.
 - No persistence or node mutation.
 
 **AUTHORIZATION**
@@ -185,11 +185,11 @@ Evidence: legacy `DockerStackService.js`, `StacksPage.vue`; target `StacksPage.v
 
 **BEHAVIOR / REAL-TIME**
 
-- Current loads once. Legacy agent health is sampled once; cluster data optionally polls.
+- Current and legacy agent health are sampled once. Legacy cluster data optionally polls.
 
 **DEPENDENCIES / RISKS**
 
-- Inventory uses manager Docker API. Agent health requires a decision on distributed node-agent architecture.
+- Inventory uses the manager Docker API. Agent health now has a deployable mTLS path, but only local single-node proof exists.
 
 ### Structured field completion
 
@@ -283,7 +283,7 @@ Evidence: legacy `DockerNetworksService.js`, `DockerNetworkRoutes.js`, `Networks
 **BACKEND CAPABILITIES**
 
 - Legacy scans every node through agents and marks no-label or non-running-task containers as ghosts.
-- Current endpoint only lists local containers carrying a Swarm service label; it does not implement ghost semantics.
+- Current endpoint scans running containers on the backend daemon and remote nodes through mTLS agents. It excludes a container only when its Swarm task exists, is running and owns that container ID; no-label, missing-task and stale-task containers are returned with the scanned node ID. Remote scan failure returns `503`, never a partial list.
 - Legacy also provides normalized service-filtered containers; current does not.
 
 **AUTHORIZATION**
@@ -296,7 +296,7 @@ Evidence: legacy `DockerNetworksService.js`, `DockerNetworkRoutes.js`, `Networks
 
 **DEPENDENCIES / RISKS**
 
-- Cluster-wide correctness depends on worker access/agent strategy. Current page can mislabel healthy containers and must not gain destructive controls.
+- Cluster-wide collection is implemented but remains PARTIAL until second-worker API/browser proof. Current real mTLS/Docker evidence covers one daemon; the endpoint remains read-only.
 
 ### Structured field completion
 
@@ -330,26 +330,26 @@ Evidence: legacy `GhostContainers.js`, `DockerContainerService.js`, `GhostContai
 
 **USER CAPABILITIES**
 
-- Docker engine/API version cards.
-- Node/service/task totals.
+- Docker engine/API version card, now available in ContainerHub through a protected read-only page.
+- Node/service/task totals, now available in ContainerHub at `/cluster`.
 - Expandable node/task topology with resource/label display, running-only filter and optional refresh.
 
 **BACKEND CAPABILITIES**
 
-- `docker.version()`, unfiltered aggregate counts, and node-by-node task aggregation.
+- Both applications use `docker.version()` for engine/API version and unfiltered list counts for cluster totals. ContainerHub issues the three count reads in parallel; node-by-node task aggregation remains legacy-only.
 - No persistence.
 
 **AUTHORIZATION**
 
-- Legacy uses `DOCKER_VIEW`; current capability is absent.
+- Docker version and aggregate cluster information use `DOCKER_VIEW` in both applications, including the ContainerHub route/menu and REST boundary.
 
 **BEHAVIOR / REAL-TIME**
 
-- Legacy total tasks includes historical tasks. Topology can poll every 5–60 seconds; totals load once.
+- Both totals include every task returned by the unfiltered Docker list, including retained historical tasks, not only running tasks. Totals load once; ContainerHub labels this explicitly and shows a retryable error instead of fabricated zeros after a failed read. Legacy topology can poll every 5–60 seconds; CLU-02 remains a product decision.
 
 **DEPENDENCIES / RISKS**
 
-- Manager Docker API. Historical-vs-active task semantics require a product decision; do not reproduce sequential N+1 aggregation.
+- Manager Docker API. CLU-01 preserves the original unfiltered task semantics; changing to active-only would be a separate product change. The three reads are not an atomic snapshot; counts can reflect concurrent cluster changes. No worker agent or N+1 topology scan is used for totals.
 
 ### Structured field completion
 
@@ -378,6 +378,10 @@ Evidence: legacy `GhostContainers.js`, `DockerContainerService.js`, `GhostContai
 - The migration risks and product decisions are the ones described in this domain section.
 
 Evidence: legacy `DockerManageService.js`, `DockerNodeService.js`, `ClusterInformationPage/`, `DockerVersionPage/`.
+
+ContainerHub Docker-version evidence: `ServiceService.ts`, `ServiceRoutes.ts`, `DockerVersionPage.vue`, route/menu entries, focused contract tests and live authenticated Docker/Chromium proof.
+
+ContainerHub CLU-01 evidence: `fetchClusterSummary`, `GET /api/docker/cluster`, `ClusterInformationPage.vue`, localized route/menu and `ClusterSummary.test.ts`. Repository: RED (missing route) to GREEN, permission/retained-history/empty/failure checks, backend/frontend builds and Swagger smoke passed. Ad hoc API/UI: real Drax login with isolated temporary SQLite identity, compiled production server factory, loopback Vite proxy and real Docker agreed on 2 nodes / 3 services / 16 tasks; unauthenticated API returned 401. Chromium displayed the same counts and historical-task hint; a simulated 503 displayed an error without zeros and retry recovered through the real API. No development credentials/database or Docker resources were changed. This proves aggregate manager reads, not CLU-02 topology or worker-agent operations.
 
 ## Task and service logs
 
@@ -442,7 +446,7 @@ Evidence: legacy `LogVisualizer/`, `LogWebSocketService.js`, `DockerLogsRoutes.j
 **BACKEND CAPABILITIES**
 
 - Legacy proxies browser WebSocket traffic through a per-node agent.
-- Current issues a hashed, user/task/shell-bound, single-use 60-second ticket, validates origin, then performs direct Docker exec; it limits frame/buffer sizes and session lifetime.
+- Current issues a hashed, user/task/shell-bound, single-use 60-second ticket, validates origin, then selects local Docker exec or the task node's binary mTLS agent relay; it limits frame/buffer sizes and session lifetime.
 - Terminal content is not persisted.
 
 **AUTHORIZATION**
@@ -455,7 +459,7 @@ Evidence: legacy `LogVisualizer/`, `LogWebSocketService.js`, `DockerLogsRoutes.j
 
 **DEPENDENCIES / RISKS**
 
-- Current direct Docker exec is secure but may only work on the backend daemon's node; multi-worker parity is unproven. In-memory tickets assume one backend process.
+- Current remote exec uses the task's authoritative node and verifies running-container/task/node labels at the agent; real multi-worker parity is unproven. In-memory tickets assume one backend process.
 
 ### Structured field completion
 
@@ -493,7 +497,7 @@ Evidence: legacy `AgentWsService.js`, `AgentWsManager.js`, `WebTerminal/`; targe
 
 **BACKEND CAPABILITIES**
 
-- Legacy uses node agents and returns derived metrics. Current task/service stats call direct `container.stats({stream:false})` and return raw metrics.
+- Legacy uses node agents and returns derived metrics. Current task/service stats select direct local `container.stats({stream:false})` or the task node's mTLS agent, retaining raw `stats` and adding normalized `metrics` (CPU, total memory, cumulative disk/network bytes); a remote failure returns 503 without local fallback.
 - No persistence; historical data is a separate monitoring domain.
 
 **AUTHORIZATION**
@@ -502,11 +506,11 @@ Evidence: legacy `AgentWsService.js`, `AgentWsManager.js`, `WebTerminal/`; targe
 
 **BEHAVIOR / REAL-TIME**
 
-- Legacy polls after each completed request. Current is one-shot and has no UI.
+- Legacy polls after each completed request. Current provides one-shot task/service endpoints plus a task page with selectable 5–60-second polling, teardown, charts and local thresholds.
 
 **DEPENDENCIES / RISKS**
 
-- A normalized DTO and remote-worker proof are required before chart work. One remote failure can reject current service-wide stats.
+- The normalized DTO and STAT-02 chart page are implemented and covered by repository checks. Authenticated API/Chromium proof returned the exact container stats and rendered four charts for a task pinned to `debianvm`. One remote failure can still reject current service-wide stats.
 
 ### Structured field completion
 
@@ -537,6 +541,8 @@ Evidence: legacy `AgentWsService.js`, `AgentWsManager.js`, `WebTerminal/`; targe
 Evidence: legacy `DockerStatsService.js`, `ContainerStatisticsPage/`; target `ServiceService.ts`, `ServiceRoutes.ts`.
 
 ## Monitoring configuration and historical statistics
+
+**TARGET STATUS:** MON-01 configuration creation/list/search/order/pagination and confirmed pause/resume/delete is migrated to `/monitoring` and `/api/monitoring-configurations`, using Drax persistence for Mongo/SQLite and Drax table state. MON-02 now implements a non-overlapping collector, normalized persisted samples, bounded retention, replacement-task discovery, protected date-range history and `/monitoring/:id/history` charts. Repository regressions/builds pass; real Docker/database/browser and distinct-worker proof remains pending. See API_CONTRACTS.md and MIGRATION_ORDER.md.
 
 **USER CAPABILITIES**
 
@@ -643,10 +649,11 @@ Evidence: legacy `TaskMonitorization/`, `TasksMonitorizationPage/`, `initSetting
 
 - Agent health, node container enumeration, remote stats, terminal relay, monitoring streams and all-node folder provisioning.
 - Discovery assumes one global `dockerway_incatainer-agent` task per node, HTTP 9997, monitorization 9996 and plain WebSocket.
+- Current implements Docker-backed health and running-container inventory in a global `containerhub-agent` image. Ghost collection reuses this inventory transport. Backend-to-agent HTTPS requires mutual TLS and validates the returned Swarm node ID.
 
 **DATA / AUTHORIZATION**
 
-- Connection routing is in memory. Backend-to-agent protocols have no traced credentials or TLS; user-facing GraphQL generally uses `DOCKER_VIEW`.
+- Legacy connection routing is in memory and has no traced credentials or TLS. Current health uses CA-validated server and client certificates; user-facing node access remains protected by `DOCKER_NODES_FETCH`.
 
 **BEHAVIOR / REAL-TIME**
 
@@ -654,7 +661,7 @@ Evidence: legacy `TaskMonitorization/`, `TasksMonitorizationPage/`, `initSetting
 
 **DEPENDENCIES / RISKS**
 
-- Flat trusted overlay network and Docker socket per node. Decide between a narrowly authenticated agent, Docker remote APIs, or explicit single-node support before implementing distributed features.
+- The target selected a narrowly authenticated per-node agent. Ghost routing uses whole-scan failure on unreachable workers; stats and binary terminal now route to the task node through mTLS. Real Docker evidence remains single-daemon only. Certificate/secret provisioning and second-worker API/browser proof remain deployment scope. All-node host provisioning is still pending.
 
 ### Structured field completion
 
@@ -694,7 +701,7 @@ Evidence: legacy `TaskMonitorization/`, `TasksMonitorizationPage/`, `initSetting
 
 - The migration risks and product decisions are the ones described in this domain section.
 
-Evidence: legacy `DockerAgent.js`, `AgentWsManager.js`, monitorization managers and compose files.
+Evidence: legacy `DockerAgent.js`, `AgentWsManager.js`, monitorization managers and compose files; target `packages/containerhub-agent/`, `AgentHealthClient.ts`, `NodesPage.vue`.
 
 ## Host folder/file provisioning
 
@@ -763,8 +770,8 @@ Evidence: legacy `DockerFolderCreator.js`, `DockerFilesRoutes.js`; target `Servi
 
 **BACKEND CAPABILITIES / DATA**
 
-- Drax replaces login, `me`, password/recovery/registration, verification, avatar and tenant switching.
-- Legacy adds LDAP fallback and persisted refresh tokens. Legacy/current user schemas differ despite sharing collection names.
+- Drax replaces login, `me`, password/recovery/registration, verification, avatar and tenant switching; ContainerHub still exposes/configures only part of those flows.
+- Legacy adds LDAP fallback and persisted refresh tokens. LDAP is deferred until Drax provides native support. Existing local-user and refresh-token compatibility remain separate proof items.
 
 **AUTHORIZATION / BEHAVIOR**
 
@@ -772,7 +779,7 @@ Evidence: legacy `DockerFolderCreator.js`, `DockerFilesRoutes.js`; target `Servi
 
 **DEPENDENCIES / RISKS**
 
-- Drax identity is the architectural replacement. LDAP, refresh-token compatibility, email activation and schema/data migration require explicit decisions and runtime tests.
+- Drax identity is the architectural replacement. Do not add a parallel LDAP adapter: wait for native Drax support. Existing local-user login, refresh-token compatibility, email activation and schema/data migration still require their own runtime tests.
 
 ### Structured field completion
 
@@ -1136,6 +1143,7 @@ Evidence: legacy `modules/registry/`; target `modules/registry/`, `RegistryImage
 
 - LDAP login/group-to-role mapping, mail-backed registration/recovery/activation, avatars and branding uploads, static media/export routes.
 - Drax supplies email/avatar service primitives, but ContainerHub does not configure SMTP, multipart, base/file/avatar paths or related frontend routes.
+- LDAP remains pending upstream until Drax implements it; it is not part of the next ContainerHub slice.
 
 **AUTHORIZATION / RISKS**
 
@@ -1236,12 +1244,13 @@ Evidence: legacy base module; target `YogaFastifyServerFactory.ts`, `ServiceRout
 **CAPABILITIES**
 
 - Startup config, Mongo connection, permissions, roles, root, LDAP settings, settings and customization initialization.
-- Current delegates config/DB/identity helpers to Drax and creates one Admin/root.
+- Current delegates config/DB/identity helpers to Drax, maintains the Admin role, and creates an initial privileged user only through explicit environment opt-in.
 - ContainerHub now uses the current Drax environment names directly and rejects startup before connection/bootstrap when the DB engine, engine-specific DB value, or JWT secret is absent.
+- Bootstrap defaults to disabled. When enabled, Drax-required name, username, password, email and phone values are mandatory; `CreateUserIfNotExist` leaves an existing username and password unchanged.
 
 **RISKS**
 
-- Hardcoded `root/root.123` is production-unsafe.
+- Operators must disable bootstrap and remove its credentials after initial creation; changing the enabled bootstrap username would create another privileged user.
 - Admin has Docker permissions only and cannot necessarily administer Drax identity.
 - Shared Mongo collection compatibility is unverified.
 
