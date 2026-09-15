@@ -4,3 +4,22 @@ dist/
 .env.local
 *.log
 .DS_Store
+*.db
+# AI Agents & IDE
+.claude/
+.codebuddy/
+.cursorrules
+.gemini/
+.hermes/
+.kiro/
+.qoder/
+.windsurfrules
+.mcp.json
+AGENTS.md
+CLAUDE.md
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+opencode.jsonc
+# Added by code-review-graph
+.code-review-graph/

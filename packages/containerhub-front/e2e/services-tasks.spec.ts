@@ -1,7 +1,11 @@
 import {expect, test} from '@playwright/test'
 
-const username = process.env.CONTAINERHUB_E2E_USERNAME ?? 'root'
-const password = process.env.CONTAINERHUB_E2E_PASSWORD ?? 'root.123'
+const username = process.env.CONTAINERHUB_E2E_USERNAME
+const password = process.env.CONTAINERHUB_E2E_PASSWORD
+
+if (!username || !password) {
+    throw new Error('CONTAINERHUB_E2E_USERNAME and CONTAINERHUB_E2E_PASSWORD are required')
+}
 
 test.describe('Services tasks', () => {
     test.beforeEach(async ({page}) => {

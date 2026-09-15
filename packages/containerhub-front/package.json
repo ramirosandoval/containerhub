@@ -11,6 +11,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@drax/audit-front": "^3.57.4",
+    "@drax/audit-share": "^3.0.0",
+    "@drax/audit-vue": "^3.58.0",
     "@drax/common-front": "^3.29.0",
     "@drax/common-vue": "^3.29.0",
     "@drax/crud-front": "^3.21.0",
