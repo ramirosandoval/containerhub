@@ -1,0 +1,102 @@
+services:
+  app:
+    image: ${CONTAINERHUB_IMAGE:-containerhub:swarm-test}
+    command:
+      - sh
+      - -eu
+      - -c
+      - |
+        export DRAX_JWT_SECRET="$$(cat /run/secrets/containerhub-test-jwt)"
+        export CONTAINERHUB_BOOTSTRAP_PASSWORD="$$(cat /run/secrets/containerhub-test-bootstrap-password)"
+        exec node packages/containerhub-back/dist/index.js
+    environment:
+      DRAX_DB_ENGINE: sqlite
+      DRAX_SQLITE_FILE: /var/lib/containerhub/containerhub.sqlite
+      DRAX_PORT: ${CONTAINERHUB_PORT:-9998}
+      CONTAINERHUB_BOOTSTRAP_ENABLED: ${CONTAINERHUB_BOOTSTRAP_ENABLED:-true}
+      CONTAINERHUB_BOOTSTRAP_NAME: ${CONTAINERHUB_BOOTSTRAP_NAME:-ContainerHub Test Administrator}
+      CONTAINERHUB_BOOTSTRAP_USERNAME: ${CONTAINERHUB_BOOTSTRAP_USERNAME:-containerhub-test}
+      CONTAINERHUB_BOOTSTRAP_EMAIL: ${CONTAINERHUB_BOOTSTRAP_EMAIL:-containerhub-test@example.invalid}
+      CONTAINERHUB_BOOTSTRAP_PHONE: ${CONTAINERHUB_BOOTSTRAP_PHONE:-+15555550100}
+      TERMINAL_ALLOWED_ORIGIN: ${CONTAINERHUB_ORIGIN:-http://127.0.0.1:9998}
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      DOCKER_DATA_PATH: /var/lib/containerhub
+      CONTAINERHUB_AGENT_CA_FILE: /run/secrets/containerhub-agent-ca.pem
+      CONTAINERHUB_AGENT_CLIENT_CERT_FILE: /run/secrets/containerhub-agent-client-cert.pem
+      CONTAINERHUB_AGENT_CLIENT_KEY_FILE: /run/secrets/containerhub-agent-client-key.pem
+      CONTAINERHUB_AGENT_HOST: containerhub-agent
+      CONTAINERHUB_AGENT_SERVER_NAME: containerhub-agent
+      CONTAINERHUB_AGENT_PORT: 9997
+    networks:
+      - containerhub-agent-network
+    secrets:
+      - containerhub-test-jwt
+      - containerhub-test-bootstrap-password
+      - containerhub-agent-ca.pem
+      - containerhub-agent-client-cert.pem
+      - containerhub-agent-client-key.pem
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - containerhub-data:/var/lib/containerhub
+    ports:
+      - target: 9998
+        published: ${CONTAINERHUB_PORT:-9998}
+        protocol: tcp
+        mode: host
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  agent:
+    image: ${CONTAINERHUB_AGENT_IMAGE:-containerhub-agent:swarm-test}
+    environment:
+      CONTAINERHUB_AGENT_PORT: 9997
+      CONTAINERHUB_AGENT_CA_FILE: /run/secrets/containerhub-agent-ca.pem
+      CONTAINERHUB_AGENT_SERVER_CERT_FILE: /run/secrets/containerhub-agent-server-cert.pem
+      CONTAINERHUB_AGENT_SERVER_KEY_FILE: /run/secrets/containerhub-agent-server-key.pem
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      DOCKER_DATA_PATH: /var/lib/containerhub
+      NODE_ID: "{{.Node.ID}}"
+    networks:
+      containerhub-agent-network:
+        aliases:
+          - containerhub-agent
+    secrets:
+      - containerhub-agent-ca.pem
+      - containerhub-agent-server-cert.pem
+      - containerhub-agent-server-key.pem
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - containerhub-data:/var/lib/containerhub
+    deploy:
+      mode: global
+      endpoint_mode: dnsrr
+      placement:
+        constraints:
+          - node.role == worker
+          - node.platform.os == linux
+
+networks:
+  containerhub-agent-network:
+    external: true
+
+volumes:
+  containerhub-data:
+
+secrets:
+  containerhub-test-jwt:
+    external: true
+  containerhub-test-bootstrap-password:
+    external: true
+  containerhub-agent-ca.pem:
+    external: true
+  containerhub-agent-server-cert.pem:
+    external: true
+  containerhub-agent-server-key.pem:
+    external: true
+  containerhub-agent-client-cert.pem:
+    external: true
+  containerhub-agent-client-key.pem:
+    external: true

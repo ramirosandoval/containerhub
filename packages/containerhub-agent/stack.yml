@@ -1,0 +1,38 @@
+services:
+  agent:
+    image: ${CONTAINERHUB_AGENT_IMAGE:-containerhub-agent:latest}
+    environment:
+      CONTAINERHUB_AGENT_PORT: 9997
+      CONTAINERHUB_AGENT_CA_FILE: /run/secrets/containerhub-agent-ca.pem
+      CONTAINERHUB_AGENT_SERVER_CERT_FILE: /run/secrets/containerhub-agent-server-cert.pem
+      CONTAINERHUB_AGENT_SERVER_KEY_FILE: /run/secrets/containerhub-agent-server-key.pem
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      NODE_ID: "{{.Node.ID}}"
+    networks:
+      containerhub-agent-network:
+        aliases:
+          - containerhub-agent
+    secrets:
+      - containerhub-agent-ca.pem
+      - containerhub-agent-server-cert.pem
+      - containerhub-agent-server-key.pem
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      mode: global
+      endpoint_mode: dnsrr
+      placement:
+        constraints:
+          - node.platform.os == linux
+
+networks:
+  containerhub-agent-network:
+    external: true
+
+secrets:
+  containerhub-agent-ca.pem:
+    external: true
+  containerhub-agent-server-cert.pem:
+    external: true
+  containerhub-agent-server-key.pem:
+    external: true

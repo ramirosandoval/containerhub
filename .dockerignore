@@ -1,0 +1,13 @@
+.git
+.idea
+.hermes
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+containerhub-agent-pki
+*.db
+*.sqlite
