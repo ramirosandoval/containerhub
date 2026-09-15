@@ -6,10 +6,11 @@ import {requirePermission} from './requirePermission.js'
 
 type TerminalSocket = {
     bufferedAmount: number
-    close(code?: number): void
+    close(code?: number, reason?: string): void
     on(event: 'message', listener: (payload: Buffer, isBinary: boolean) => void): void
     once(event: 'close' | 'error', listener: () => void): void
     send(payload: Buffer, options: {binary: true}): void
+    send(payload: string): void
 }
 
 type TerminalRequest = {
@@ -38,7 +39,9 @@ function terminalTicket(request: TerminalRequest): string | undefined {
 function terminalOriginIsAllowed(request: TerminalRequest): boolean {
     const origin = Array.isArray(request.headers.origin) ? request.headers.origin[0] : request.headers.origin
     const configuredOrigin = process.env.TERMINAL_ALLOWED_ORIGIN
-    if (configuredOrigin) return origin === configuredOrigin
+    if (configuredOrigin) {
+        try { return origin === new URL(configuredOrigin).origin } catch { return false }
+    }
     if (process.env.NODE_ENV === 'production' || !origin) return false
     try { return ['127.0.0.1', '::1', 'localhost'].includes(new URL(origin).hostname) }
     catch { return false }
@@ -48,9 +51,9 @@ function parseResize(payload: Buffer): TerminalResize | undefined {
     if (payload.length > 1_024) return undefined
     try {
         const control = JSON.parse(payload.toString('utf8')) as Record<string, unknown>
-        const columns = Number(control.columns)
-        const rows = Number(control.rows)
-        if (control.type !== 'resize' || !Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || columns > 500 || rows < 1 || rows > 500) return undefined
+        const columns = control.columns
+        const rows = control.rows
+        if (control.type !== 'resize' || typeof columns !== 'number' || typeof rows !== 'number' || !Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || columns > 500 || rows < 1 || rows > 500) return undefined
         return {type: 'resize', columns, rows}
     } catch { return undefined }
 }
@@ -64,7 +67,11 @@ function createTerminalSession(request: TerminalRequest): {ticket: string} {
 export const TerminalRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
     fastify.post('/api/docker/task/:taskId/terminal-sessions', {
         preHandler: async (request) => requirePermission(request, DockerPermissions.Terminal),
-        schema: {security: [{bearerAuth: []}]}
+        schema: {
+            security: [{bearerAuth: []}],
+            params: {type: 'object', additionalProperties: false, required: ['taskId'], properties: {taskId: {type: 'string', minLength: 1, maxLength: 128}}},
+            body: {type: 'object', additionalProperties: false, required: ['shell'], properties: {shell: {type: 'string', enum: ['sh', 'bash']}}}
+        }
     }, async (request: any) => createTerminalSession(request))
 
     ;(fastify.get as any)('/api/docker/terminal', {
@@ -79,8 +86,22 @@ export const TerminalRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
     }, async (socket: TerminalSocket, request: TerminalRequest) => {
         const session = request.terminalSession
         if (!session) return socket.close(1008)
+        let disconnected = false
+        const pendingInput: Array<{payload: Buffer; isBinary: boolean}> = []
+        let pendingBytes = 0
+        let receiveInput = (payload: Buffer, isBinary: boolean) => {
+            pendingBytes += payload.length
+            if (pendingBytes > MAX_INPUT_BYTES || pendingInput.length >= 64) {
+                disconnected = true
+                socket.close(1009)
+            } else if (!disconnected) pendingInput.push({payload, isBinary})
+        }
+        socket.on('message', (payload, isBinary) => receiveInput(payload, isBinary))
+        socket.once('close', () => { disconnected = true })
+        socket.once('error', () => { disconnected = true })
         try {
             const terminal = await openTaskTerminalConnection(session.taskId, session.shell)
+            if (disconnected) { terminal.close(); return }
             let closed = false
             let idleTimer: ReturnType<typeof setTimeout> | undefined
             const closeTerminal = () => {
@@ -97,25 +118,53 @@ export const TerminalRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
             }
             const sessionTimer = setTimeout(closeTerminal, MAX_SESSION_MILLISECONDS)
             resetIdleTimer()
+            socket.send(JSON.stringify({type: 'ready'}))
             terminal.stream.on('data', (chunk: Buffer) => {
-                if (socket.bufferedAmount > MAX_BUFFERED_OUTPUT_BYTES) return closeTerminal()
+                if (socket.bufferedAmount + chunk.length > MAX_BUFFERED_OUTPUT_BYTES) return closeTerminal()
                 socket.send(Buffer.from(chunk), {binary: true})
             })
             terminal.stream.once('end', closeTerminal)
+            terminal.stream.once('close', closeTerminal)
             terminal.stream.once('error', closeTerminal)
-            socket.on('message', (payload, isBinary) => {
+            let pendingResize: TerminalResize | undefined
+            let resizeInFlight = false
+            const queueResize = (resize: TerminalResize) => {
+                pendingResize = resize
+                if (resizeInFlight) return
+                resizeInFlight = true
+                void (async () => {
+                    try {
+                        while (!closed && pendingResize) {
+                            const nextResize = pendingResize
+                            pendingResize = undefined
+                            await terminal.resize(nextResize.columns, nextResize.rows)
+                        }
+                    } catch {
+                        closeTerminal()
+                    } finally {
+                        pendingResize = undefined
+                        resizeInFlight = false
+                    }
+                })()
+            }
+            receiveInput = (payload, isBinary) => {
+                if (closed) return
                 resetIdleTimer()
-                if (isBinary && payload.length <= MAX_INPUT_BYTES) terminal.stream.write(payload)
-                else {
+                if (isBinary) {
+                    if (payload.length > MAX_INPUT_BYTES || terminal.stream.writableLength + payload.length > MAX_BUFFERED_OUTPUT_BYTES) return closeTerminal()
+                    terminal.stream.write(payload)
+                } else {
                     const resize = parseResize(payload)
-                    if (resize) void terminal.resize(resize.columns, resize.rows)
+                    if (resize) queueResize(resize)
                     else closeTerminal()
                 }
-            })
+            }
+            for (const input of pendingInput) receiveInput(input.payload, input.isBinary)
+            pendingInput.length = 0
             socket.once('close', closeTerminal)
             socket.once('error', closeTerminal)
         } catch {
-            socket.close(1011)
+            socket.close(1011, 'Terminal unavailable')
         }
     })
 }

@@ -2,13 +2,20 @@ import Docker from 'dockerode'
 import {mkdir, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import type {Duplex} from 'node:stream'
+import {z} from 'zod'
 import {mapInspectToServiceModel, type ServiceModel} from '../helpers/mapInspectToServiceModel.js'
+import {registerServiceMutation, type ServiceMutationContext} from './ServiceMutationAudit.js'
+import {connectTaskAgentTerminal} from './AgentTerminalClient.js'
+import {createAgentHealthClient} from './AgentHealthClient.js'
+import {normalizeContainerStats} from './ContainerStats.js'
 
 type DockerServiceListOptions = import('dockerode').ServiceListOptions
 type DockerServiceSpec = import('dockerode').ServiceSpec
 type DockerContainerTaskSpec = import('dockerode').ContainerTaskSpec
 type DockerTask = import('dockerode').Task
+type DockerContainer = import('dockerode').ContainerInfo
 type DockerNetworkCreateOptions = import('dockerode').NetworkCreateOptions
+type DockerNetworkAttachment = import('dockerode').NetworkAttachmentConfig
 type DockerMountSettings = import('dockerode').MountSettings
 type ContainerHealthcheck = import('dockerode').HealthConfig
 
@@ -56,69 +63,67 @@ type ServiceListFilterOptions = {
     filters?: ServiceFilter[]
 }
 
-type LabelInput = {
-    name: string
-    value?: string
-}
+const NamedValueInputSchema = z.object({name: z.string().min(1), value: z.string().optional()})
+const VolumeInputSchema = z.object({
+    type: z.enum(['bind', 'volume', 'tmpfs']).optional(),
+    hostVolume: z.string().optional(),
+    source: z.string().optional(),
+    containerVolume: z.string().optional(),
+    target: z.string().optional(),
+    readOnly: z.boolean().optional()
+}).refine(volume => Boolean(volume.hostVolume ?? volume.source) && Boolean(volume.containerVolume ?? volume.target), {
+    message: 'Service volume requires source and target'
+})
+const NetworkInputSchema = z.union([
+    z.string().min(1),
+    z.object({
+        id: z.string().optional(), target: z.string().optional(), Target: z.string().optional(),
+        aliases: z.array(z.string()).optional(), Aliases: z.array(z.string()).optional()
+    }).refine(network => Boolean(network.id ?? network.target ?? network.Target), {message: 'Service network requires a target'})
+])
+const LegacyHealthcheckInputSchema = z.object({
+    test: z.union([z.string(), z.array(z.string())]).optional(),
+    interval: z.number().finite().optional(), timeout: z.number().finite().optional(),
+    retries: z.number().int().optional(), startPeriod: z.number().finite().optional()
+}).strict()
+const DockerHealthcheckInputSchema = z.object({
+    Test: z.array(z.string()).optional(), Interval: z.number().finite().optional(),
+    Timeout: z.number().finite().optional(), Retries: z.number().int().optional(),
+    StartPeriod: z.number().finite().optional()
+}).strict()
+const ServiceInputSchema = z.object({
+    name: z.string().min(1),
+    image: z.string().min(1),
+    stack: z.string().nullable().optional(),
+    labels: z.array(NamedValueInputSchema).optional(),
+    command: z.array(z.string()).optional(),
+    envs: z.array(NamedValueInputSchema).optional(),
+    volumes: z.array(VolumeInputSchema).optional(),
+    dns: z.array(z.string()).optional(),
+    extraHosts: z.array(z.string()).optional(),
+    healthcheck: z.union([DockerHealthcheckInputSchema, LegacyHealthcheckInputSchema]).optional(),
+    limits: z.object({
+        CPULimit: z.number().finite().optional(), memoryLimit: z.number().finite().optional(),
+        CPUReservation: z.number().finite().optional(), memoryReservation: z.number().finite().optional()
+    }).optional(),
+    constraints: z.array(z.object({name: z.string().min(1), operation: z.string(), value: z.string()})).optional(),
+    preferences: z.array(z.object({value: z.string().optional()})).optional(),
+    deployMode: z.enum(['global', 'replicated', 'replic']).optional(),
+    replicas: z.number().int().min(0).optional(),
+    ports: z.array(z.object({
+        protocol: z.string().optional(), hostPort: z.number().int().optional(), publishedPort: z.number().int().optional(),
+        containerPort: z.number().int().optional(), targetPort: z.number().int().optional()
+    })).optional(),
+    networks: z.array(NetworkInputSchema).optional()
+}).strict()
 
-type EnvInput = {
-    name: string
-    value?: string
-}
-
-type MountType = 'bind' | 'volume' | 'tmpfs'
-type VolumeInput = {
-    type?: MountType
-    hostVolume?: string
-    source?: string
-    containerVolume?: string
-    target?: string
-    readOnly?: boolean
-}
-
-type ConstraintInput = {
-    name: string
-    operation: string
-    value: string
-}
-
-type PreferenceInput = {
-    value?: string
-}
-
-type PortInput = {
-    protocol?: string
-    hostPort?: number
-    publishedPort?: number
-    containerPort?: number
-    targetPort?: number
-}
-
-type NetworkInput = string | {
-    id?: string
-    target?: string
-}
-
-type DeployMode = 'global' | 'replicated'
-
-type ServiceInput = {
-    name?: string
-    image?: string
-    stack?: string | null
-    labels?: LabelInput[]
-    command?: string[]
-    envs?: EnvInput[]
-    volumes?: VolumeInput[]
-    dns?: string[]
-    extraHosts?: string[]
-    healthcheck?: ContainerHealthcheck
-    constraints?: ConstraintInput[]
-    preferences?: PreferenceInput[]
-    deployMode?: DeployMode
-    replicas?: number
-    ports?: PortInput[]
-    networks?: NetworkInput[]
-}
+export const ServiceCreateInputSchema = ServiceInputSchema
+export const ServiceUpdateInputSchema = ServiceInputSchema.partial().strict()
+type ServiceInput = z.infer<typeof ServiceUpdateInputSchema>
+type LabelInput = z.infer<typeof NamedValueInputSchema>
+type VolumeInput = z.infer<typeof VolumeInputSchema>
+type NetworkInput = z.infer<typeof NetworkInputSchema>
+type LegacyHealthcheckInput = z.infer<typeof LegacyHealthcheckInputSchema>
 
 type PaginateServicesOptions = {
     page: number
@@ -172,13 +177,14 @@ export function parseServiceFilters(raw: unknown): ServiceFilter[] {
 }
 
 function asServiceIdArray(serviceIds: unknown): string[] {
-    if (!Array.isArray(serviceIds) || serviceIds.some((serviceId) => typeof serviceId !== 'string' || !serviceId)) {
-        throw new Error('serviceIds must be an array of non-empty service IDs')
+    if (!Array.isArray(serviceIds) || !serviceIds.length || serviceIds.some((serviceId) => typeof serviceId !== 'string' || !serviceId)) {
+        throw new Error('serviceIds must be a non-empty array of service IDs')
     }
     return serviceIds
 }
 
 const docker = new Docker({socketPath: process.env.DOCKER_SOCKET_PATH ?? '/var/run/docker.sock'})
+const agentHealthClient = createAgentHealthClient()
 
 export async function fetchService(stack?: string | null): Promise<ServiceModel[]> {
     const dockerServices = await docker.listServices(buildDockerListFilters({stack}))
@@ -315,7 +321,46 @@ function toMountSettings(volume: VolumeInput): DockerMountSettings {
     }
 }
 
+function toNetworkAttachment(network: NetworkInput): DockerNetworkAttachment {
+    if (typeof network === 'string') return {Target: network}
+    return {
+        Target: network.id ?? network.target ?? network.Target,
+        Aliases: network.aliases ?? network.Aliases
+    }
+}
+
+function toContainerHealthcheck(healthcheck: ContainerHealthcheck | LegacyHealthcheckInput): ContainerHealthcheck {
+    if ('Test' in healthcheck) return healthcheck
+    const legacyHealthcheck = healthcheck as LegacyHealthcheckInput
+    const toNanoseconds = (seconds: number | undefined) => seconds === undefined ? undefined : seconds * 1_000_000_000
+    return {
+        Test: legacyHealthcheck.test === undefined
+            ? undefined
+            : Array.isArray(legacyHealthcheck.test) ? legacyHealthcheck.test : ['CMD-SHELL', legacyHealthcheck.test],
+        Interval: toNanoseconds(legacyHealthcheck.interval),
+        Timeout: toNanoseconds(legacyHealthcheck.timeout),
+        Retries: legacyHealthcheck.retries,
+        StartPeriod: toNanoseconds(legacyHealthcheck.startPeriod)
+    }
+}
+
+function toServiceNetworks(networkInputs: NetworkInput[] | undefined, stack: string | undefined, serviceName: string, previousTaskTemplate?: DockerContainerTaskSpec, previousServiceNetworks?: DockerNetworkAttachment[]): DockerNetworkAttachment[] | undefined {
+    if (networkInputs === undefined && (previousTaskTemplate?.Networks ?? previousServiceNetworks)) {
+        return previousTaskTemplate?.Networks ?? previousServiceNetworks
+    }
+
+    const networks = networkInputs?.map(toNetworkAttachment) ?? []
+    if (stack) {
+        const defaultNetwork = `${stack}_default`
+        if (!networks.some((network) => network.Target === defaultNetwork)) {
+            networks.push({Target: defaultNetwork, Aliases: [serviceName.replace(`${stack}_`, '')]})
+        }
+    }
+    return networks.length ? networks : undefined
+}
+
 function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): DockerServiceSpec {
+    const {Networks: previousServiceNetworks, ...previousSpec} = previous ?? {}
     const previousTaskTemplate = previous?.TaskTemplate
     const previousContainerTask = previousTaskTemplate?.Runtime === 'plugin' || previousTaskTemplate?.Runtime === 'attachment'
         ? undefined
@@ -342,17 +387,23 @@ function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): Docke
                 const [hostname, address] = host.split(':')
                 return `${address} ${hostname}`
             }) : container.Hosts,
-            HealthCheck: input.healthcheck ?? container.HealthCheck
+            HealthCheck: input.healthcheck ? toContainerHealthcheck(input.healthcheck) : container.HealthCheck
         },
         Placement: input.constraints || input.preferences ? {
             ...(previous?.TaskTemplate?.Placement ?? {}),
             Constraints: input.constraints?.map((constraint) => `${constraint.name} ${constraint.operation} ${constraint.value}`),
             Preferences: input.preferences?.map((preference) => ({Spread: {SpreadDescriptor: preference.value ?? ''}}))
-        } : previous?.TaskTemplate?.Placement
+        } : previous?.TaskTemplate?.Placement,
+        Resources: input.limits ? {
+            Limits: {NanoCPUs: input.limits.CPULimit, MemoryBytes: input.limits.memoryLimit},
+            Reservations: {NanoCPUs: input.limits.CPUReservation, MemoryBytes: input.limits.memoryReservation}
+        } : previous?.TaskTemplate?.Resources,
+        RestartPolicy: {Condition: 'on-failure', Delay: 10_000_000_000, MaxAttempts: 10},
+        Networks: toServiceNetworks(input.networks, stack, name, previousContainerTask, previousServiceNetworks)
     }
 
     const spec: DockerServiceSpec = {
-        ...previous,
+        ...previousSpec,
         Name: name,
         Labels: labels,
         TaskTemplate: taskTemplate,
@@ -361,16 +412,19 @@ function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): Docke
             : input.deployMode === 'replicated' || input.replicas !== undefined
                 ? {Replicated: {Replicas: asServiceReplicas(input.replicas)}}
                 : previous?.Mode,
+        UpdateConfig: {
+            Parallelism: 2, Delay: 1_000_000_000, FailureAction: 'pause', Monitor: 15_000_000_000, MaxFailureRatio: 0.15
+        } as DockerServiceSpec['UpdateConfig'],
+        RollbackConfig: {
+            Parallelism: 1, Delay: 1_000_000_000, FailureAction: 'pause', Monitor: 15_000_000_000, MaxFailureRatio: 0.15
+        } as DockerServiceSpec['RollbackConfig'],
         EndpointSpec: input.ports ? {
             Ports: input.ports.map((port) => ({
                 Protocol: toServicePortProtocol(port.protocol),
                 PublishedPort: asServicePort(port.hostPort ?? port.publishedPort),
                 TargetPort: asServicePort(port.containerPort ?? port.targetPort)
             }))
-        } : previous?.EndpointSpec,
-        Networks: input.networks ? input.networks.map((network) => ({
-            Target: typeof network === 'string' ? network : network.id ?? network.target
-        })) : previous?.Networks
+        } : previous?.EndpointSpec
     }
 
     return spec
@@ -386,20 +440,42 @@ function asServiceReplicas(value: number | undefined): number {
     return value ?? 1
 }
 
-export async function createService(input: ServiceInput): Promise<ServiceModel> {
-    const created = await docker.createService(toServiceSpec(input))
-    return findServiceById(created.ID)
+async function parseServiceInput<T>(schema: z.ZodType<T>, input: unknown): Promise<T> {
+    try {
+        return await schema.parseAsync(input)
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            const {ZodErrorToValidationError} = await import('@drax/common-back')
+            throw ZodErrorToValidationError(error, input)
+        }
+        throw error
+    }
 }
 
-export async function updateService(serviceId: string, input: ServiceInput): Promise<ServiceModel> {
+export async function createService(input: ServiceInput, mutationContext: ServiceMutationContext): Promise<ServiceModel> {
+    const validatedInput = await parseServiceInput(ServiceCreateInputSchema, input)
+    const serviceSpec = toServiceSpec(validatedInput)
+    await ensureServiceNetworks(serviceSpec, validatedInput.stack)
+    const created = await docker.createService(serviceSpec)
+    const service = await findServiceById(created.id)
+    await registerServiceMutation('CREATE', service.id, mutationContext)
+    return service
+}
+
+export async function updateService(serviceId: string, input: ServiceInput, mutationContext: ServiceMutationContext): Promise<ServiceModel> {
+    const validatedInput = await parseServiceInput(ServiceUpdateInputSchema, input)
     const service = docker.getService(serviceId)
     const inspected = await service.inspect()
     const currentSpec: DockerServiceSpec = inspected.Spec
-    await service.update({...toServiceSpec(input, currentSpec), version: inspected.Version.Index})
-    return findServiceById(serviceId)
+    const serviceSpec = toServiceSpec(validatedInput, currentSpec)
+    await ensureServiceNetworks(serviceSpec, validatedInput.stack ?? currentSpec.Labels?.['com.docker.stack.namespace'])
+    await service.update({...serviceSpec, version: inspected.Version.Index})
+    const updatedService = await findServiceById(serviceId)
+    await registerServiceMutation('UPDATE', serviceId, mutationContext)
+    return updatedService
 }
 
-export async function dockerRestart(serviceId: string): Promise<{Warnings: string[]}> {
+export async function dockerRestart(serviceId: string, mutationContext: ServiceMutationContext): Promise<{Warnings: string[]}> {
     const service = docker.getService(serviceId)
     const inspected = await service.inspect()
     const currentSpec: DockerServiceSpec = inspected.Spec
@@ -413,26 +489,55 @@ export async function dockerRestart(serviceId: string): Promise<{Warnings: strin
         }
     }
     const warnings = await service.update(updateOptions)
+    await registerServiceMutation('RESTART', serviceId, mutationContext)
     return {Warnings: warnings?.Warnings ?? []}
 }
 
-export async function dockerRestartMany(serviceIds: unknown): Promise<Array<{Warnings: string[]}>> {
+export type ServiceRestartResult = {
+    serviceId: string
+    success: boolean
+    warnings: string[]
+    error?: string
+}
+
+export async function dockerRestartMany(serviceIds: unknown, mutationContext: ServiceMutationContext): Promise<ServiceRestartResult[]> {
     const validatedIds = asServiceIdArray(serviceIds)
-    const results: Array<{Warnings: string[]}> = []
-    for (const serviceId of validatedIds) results.push(await dockerRestart(serviceId))
+    const results: ServiceRestartResult[] = []
+    for (const serviceId of validatedIds) {
+        try {
+            const {Warnings: warnings} = await dockerRestart(serviceId, mutationContext)
+            results.push({serviceId, success: true, warnings})
+        } catch (error) {
+            results.push({serviceId, success: false, warnings: [], error: error instanceof Error ? error.message : 'Unknown error'})
+        }
+    }
     return results
 }
 
-export async function dockerRemove(serviceId: string): Promise<{message: string}> {
+export async function dockerRemove(serviceId: string, mutationContext: ServiceMutationContext): Promise<{message: string}> {
     const service = docker.getService(serviceId)
     await service.remove()
+    await registerServiceMutation('DELETE', serviceId, mutationContext)
     return {message: `Service ${serviceId} removed`}
 }
 
-export async function dockerRemoveMany(serviceIds: unknown): Promise<Array<{message: string}>> {
+export type ServiceRemoveResult = {
+    serviceId: string
+    success: boolean
+    error?: string
+}
+
+export async function dockerRemoveMany(serviceIds: unknown, mutationContext: ServiceMutationContext): Promise<ServiceRemoveResult[]> {
     const validatedIds = asServiceIdArray(serviceIds)
-    const results: Array<{message: string}> = []
-    for (const serviceId of validatedIds) results.push(await dockerRemove(serviceId))
+    const results: ServiceRemoveResult[] = []
+    for (const serviceId of validatedIds) {
+        try {
+            await dockerRemove(serviceId, mutationContext)
+            results.push({serviceId, success: true})
+        } catch (error) {
+            results.push({serviceId, success: false, error: error instanceof Error ? error.message : 'Unknown error'})
+        }
+    }
     return results
 }
 
@@ -443,6 +548,30 @@ async function fetchRawTasks(serviceIdentifier: string): Promise<DockerTask[]> {
 
 export async function fetchTasks(serviceIdentifier: string): Promise<ServiceTaskModel[]> {
     return (await fetchRawTasks(serviceIdentifier)).map(toServiceTaskModel)
+}
+
+export async function fetchTaskInspect(taskId: string) {
+    return redactTaskInspect(await docker.getTask(taskId).inspect())
+}
+
+const sensitiveInspectField = /password|passwd|secret|token|credential|authorization|authentication|auth(?:config|data|header)|auth$|api.?key|access.?key|private.?key|client.?key/i
+
+export function redactTaskInspect(value: unknown, field?: string): unknown {
+    if (field === 'Command' || field === 'Args') return '[REDACTED]'
+    if (field === 'Env' && Array.isArray(value)) {
+        return value.map((entry) => {
+            if (typeof entry !== 'string') return '[REDACTED]'
+            const separator = entry.indexOf('=')
+            return separator < 0 ? '[REDACTED]' : `${entry.slice(0, separator)}=[REDACTED]`
+        })
+    }
+    if (field === 'Labels' && value && typeof value === 'object' && !Array.isArray(value)) {
+        return Object.fromEntries(Object.keys(value).map((key) => [key, '[REDACTED]']))
+    }
+    if (field && sensitiveInspectField.test(field)) return '[REDACTED]'
+    if (Array.isArray(value)) return value.map((entry) => redactTaskInspect(entry))
+    if (!value || typeof value !== 'object') return value
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, redactTaskInspect(entry, key)]))
 }
 
 function getRecordField(record: unknown, key: string): Record<string, unknown> | undefined {
@@ -462,6 +591,49 @@ function getContainerId(record: unknown): string | undefined {
     const containerStatus = getRecordField(status, 'ContainerStatus')
     const id = containerStatus?.ContainerID
     return typeof id === 'string' ? id : undefined
+}
+
+export function getImageObject(inputImage = '') {
+    const fullname = /@/.test(inputImage) ? inputImage.split("@")[0] : inputImage
+    const imageSplited = fullname.split("/")
+
+    let id = /@/.test(inputImage) ? inputImage.split("@")[1].split(":")[1] : ''
+    let name = ''
+    let nameWithTag = ''
+    let namespace = ''
+    let domain = ''
+    let tag = ''
+
+    switch (imageSplited.length) {
+        case 1:
+            nameWithTag = imageSplited[0]
+            name = nameWithTag.split(":")[0]
+            tag = nameWithTag.split(":")[1]
+            break
+        case 2:
+            nameWithTag = imageSplited[1]
+            name = nameWithTag.split(":")[0]
+            tag = nameWithTag.split(":")[1]
+            domain = imageSplited[0]
+            break
+        case 3:
+            nameWithTag = imageSplited[2]
+            name = nameWithTag.split(":")[0]
+            tag = nameWithTag.split(":")[1]
+            namespace = imageSplited[1]
+            domain = imageSplited[0]
+            break
+    }
+
+    return {
+        id,
+        fullname,
+        domain,
+        namespace,
+        name,
+        tag,
+        nameWithTag
+    }
 }
 
 export type ServiceTaskModel = {
@@ -496,9 +668,18 @@ export type TaskTerminalConnection = {
 }
 
 export async function openTaskTerminalConnection(taskId: string, shell: 'sh' | 'bash'): Promise<TaskTerminalConnection> {
+    if (shell !== 'sh' && shell !== 'bash') throw new Error('invalid terminal shell')
     const task = await docker.getTask(taskId).inspect()
     const containerId = getContainerId(task)
-    if (!containerId) throw new Error('task has no running container')
+    const nodeId = getOptionalField(task, 'NodeID')
+    if (!containerId || !nodeId || getOptionalField(getRecordField(task, 'Status'), 'State') !== 'running') {
+        throw new Error('task has no running container')
+    }
+    const localNodeId = getOptionalField(getRecordField(await docker.info(), 'Swarm'), 'NodeID')
+    if (!localNodeId) throw new Error('local Swarm node identity unavailable')
+    if (nodeId !== localNodeId) {
+        return connectTaskAgentTerminal(nodeId, containerId, task.ID, shell)
+    }
     const terminalExec = await docker.getContainer(containerId).exec({
         AttachStdin: true,
         AttachStdout: true,
@@ -520,30 +701,49 @@ export async function openTaskTerminal(taskId: string, shell: 'sh' | 'bash'): Pr
 
 export async function fetchTaskStats(taskId: string) {
     const task = await docker.getTask(taskId).inspect()
-    const containerId = getContainerId(task)
-    return {
-        task,
-        stats: containerId ? await docker.getContainer(containerId).stats({stream: false}) : null
-    }
+    return taskStatistics(task)
 }
 
 export async function fetchServiceStats(serviceIdentifier: string) {
-    return Promise.all((await fetchRawTasks(serviceIdentifier)).map(async (task) => {
-        const containerId = getContainerId(task)
-        return {
-            task,
-            stats: containerId ? await docker.getContainer(containerId).stats({stream: false}) : null
-        }
-    }))
+    return Promise.all((await fetchRawTasks(serviceIdentifier)).map(taskStatistics))
 }
 
-export const MAX_TASK_LOG_LINES = 2_000
+async function taskStatistics(task: DockerTask) {
+    const stats = await fetchTaskContainerStats(task)
+    try {
+        return {task: toServiceTaskModel(task), stats, metrics: stats === null ? null : normalizeContainerStats(stats)}
+    } catch {
+        throw Object.assign(new Error(`Invalid container stats for task ${getOptionalField(task, 'ID') ?? 'unknown'}`), {statusCode: 503})
+    }
+}
 
-export function parseTaskLogTail(rawTail: unknown): number {
-    const tail = Number(rawTail)
-    if (!Number.isInteger(tail) || tail < 1) throw new Error('tail must be a positive integer')
-    if (tail > MAX_TASK_LOG_LINES) throw new Error(`tail must be at most ${MAX_TASK_LOG_LINES}`)
-    return tail
+async function fetchTaskContainerStats(task: DockerTask) {
+    const containerId = getContainerId(task)
+    if (!containerId) return null
+    const nodeId = getOptionalField(task, 'NodeID')
+    const localNodeId = getOptionalField(getRecordField(await docker.info(), 'Swarm'), 'NodeID')
+    if (nodeId && nodeId === localNodeId) return docker.getContainer(containerId).stats({stream: false})
+    try {
+        if (!nodeId || !agentHealthClient) throw new Error('Node agent is not configured')
+        return await agentHealthClient.fetchContainerStats(nodeId, containerId)
+    } catch {
+        throw Object.assign(new Error(`Cannot fetch stats on node ${nodeId ?? 'unknown'}`), {statusCode: 503})
+    }
+}
+
+
+export function parseTaskLogTail(rawTail: unknown, maxTail: number = 10000): number {
+    if (typeof rawTail === 'string') {
+        const parsed = parseInt(rawTail, 10)
+        if (isNaN(parsed)) throw new Error('Tail must be an integer.')
+        rawTail = parsed
+    }
+    if (typeof rawTail === 'number') {
+        if (rawTail <= 0) throw new Error('Tail must be a positive integer.')
+        if (rawTail > maxTail) throw new Error(`Tail must be at most ${maxTail}.`)
+        return rawTail
+    }
+    throw new Error('Invalid tail parameter.')
 }
 
 function toLogLines(logOutput: string): string[] {
@@ -669,24 +869,77 @@ export async function fetchLogs(stackName: string, serviceName: string, lines = 
 }
 
 export async function fetchNodes() {
-    return (await docker.listNodes()).map((node) => {
+    return Promise.all((await docker.listNodes()).map(async (node) => {
         const description = getRecordField(node, 'Description')
         const status = getRecordField(node, 'Status')
         const specification = getRecordField(node, 'Spec')
         const managerStatus = getRecordField(node, 'ManagerStatus')
+        const id = getOptionalField(node, 'ID')
+        const ip = getOptionalField(status, 'Addr')
+        const role = getOptionalField(specification, 'Role')
         return {
-            id: getOptionalField(node, 'ID'),
+            id,
             hostname: getOptionalField(description, 'Hostname'),
-            ip: getOptionalField(status, 'Addr'),
-            role: getOptionalField(specification, 'Role'),
+            ip,
+            role,
             availability: getOptionalField(specification, 'Availability'),
             state: getOptionalField(status, 'State'),
             engine: getOptionalField(getRecordField(description, 'Engine'), 'EngineVersion'),
             leader: managerStatus?.Leader === true,
             reachability: getOptionalField(managerStatus, 'Reachability') ?? null,
-            resources: description?.Resources ?? null
+            resources: description?.Resources ?? null,
+            agentHealthy: agentHealthClient && id && role === 'worker' ? await agentHealthClient.isHealthy(id) : null
+        }
+    }))
+}
+
+export async function fetchNodeAndTasks() {
+    const [nodes, tasks] = await Promise.all([
+        docker.listNodes(),
+        docker.listTasks()
+    ])
+
+    return nodes.map(node => {
+        const nodeId = (node as any).ID
+        const nodeTasks = tasks
+            .filter((task: any) => task.NodeID === nodeId)
+            .map((task: any) => ({
+                id: task.ID,
+                nodeId: task.NodeID,
+                createdAt: task.CreatedAt,
+                updatedAt: task.UpdatedAt,
+                state: task.Status?.State,
+                message: task.Status?.Message,
+                image: getImageObject(task.Spec?.ContainerSpec?.Image),
+                serviceId: task.ServiceID,
+                containerId: task.Status?.ContainerStatus?.ContainerID,
+            }))
+
+        return {
+            id: nodeId,
+            hostname: (node as any).Description?.Hostname,
+            ip: (node as any).Status?.Addr,
+            role: (node as any).Spec?.Role,
+            availability: (node as any).Spec?.Availability,
+            state: (node as any).Status?.State,
+            engine: (node as any).Description?.Engine?.EngineVersion,
+            leader: (node as any).ManagerStatus?.Leader,
+            reachability: (node as any).ManagerStatus?.Reachability,
+            resources: (node as any).Description?.Resources,
+            labels: (node as any).Spec?.Labels,
+            tasks: nodeTasks
         }
     })
+}
+
+export async function fetchClusterSummary(): Promise<{nodesQuantity: number; servicesQuantity: number; tasksQuantity: number}> {
+    const [nodes, services, tasks] = await Promise.all([docker.listNodes(), docker.listServices(), docker.listTasks()])
+    return {nodesQuantity: nodes.length, servicesQuantity: services.length, tasksQuantity: tasks.length}
+}
+
+export async function fetchDockerVersion(): Promise<{Version?: string; ApiVersion?: string}> {
+    const {Version, ApiVersion} = await docker.version()
+    return {Version, ApiVersion}
 }
 
 export async function fetchNetworks() {
@@ -718,16 +971,58 @@ export async function removeNetwork(network: string) {
     return docker.getNetwork(network).remove()
 }
 
-export async function getOrCreateNetwork(network: string) {
+export async function getOrCreateNetwork(network: string, stack?: string | null) {
     try {
         return await fetchNetwork(network)
     } catch {
-        return createNetwork({Name: network, Driver: 'overlay', Attachable: true})
+        return createNetwork({
+            Name: network,
+            Driver: 'overlay',
+            Attachable: true,
+            Labels: stack ? {'com.docker.stack.namespace': stack} : undefined
+        })
     }
 }
 
-export async function fetchGhostContainers() {
-    return docker.listContainers({all: true, filters: JSON.stringify({label: ['com.docker.swarm.service.id']})})
+async function ensureServiceNetworks(serviceSpec: DockerServiceSpec, stack?: string | null): Promise<void> {
+    for (const network of serviceSpec.TaskTemplate?.Networks ?? []) {
+        if (network.Target) await getOrCreateNetwork(network.Target, stack)
+    }
+}
+
+export type GhostContainer = Pick<DockerContainer, 'Id' | 'Created' | 'Image' | 'Status' | 'State' | 'Labels'> & {NodeID?: string}
+
+export async function fetchGhostContainers(): Promise<GhostContainer[]> {
+    const [localContainers, tasks, dockerInfo, nodes] = await Promise.all([
+        docker.listContainers({all: false}),
+        docker.listTasks(),
+        docker.info(),
+        docker.listNodes()
+    ])
+    const tasksById = new Map(tasks.map((task) => [task.ID, task]))
+    const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
+    const containers: GhostContainer[] = localContainers.map((container) => ({...container, NodeID: localNodeId}))
+    for (const node of nodes) {
+        if (node.ID === localNodeId) continue
+        try {
+            if (!agentHealthClient) throw new Error('Node agent is not configured')
+            const nodeContainers = await agentHealthClient.fetchRunningContainers(node.ID)
+            containers.push(...nodeContainers.map((container) => ({...container, NodeID: node.ID})))
+        } catch {
+            throw Object.assign(new Error(`Cannot scan containers on node ${node.ID}`), {statusCode: 503})
+        }
+    }
+
+    return containers.flatMap((container) => {
+        const labels = container.Labels ?? {}
+        const taskId = labels['com.docker.swarm.task.id']
+        if (Object.keys(labels).length && !taskId) return []
+
+        const task = taskId ? tasksById.get(taskId) : undefined
+        if (task && getOptionalField(getRecordField(task, 'Status'), 'State') === 'running' && getContainerId(task) === container.Id) return []
+
+        return [container]
+    })
 }
 
 function safeDataPath(hostPath: string, fileName?: string): string {
@@ -744,21 +1039,49 @@ function safeDataPath(hostPath: string, fileName?: string): string {
 export async function createFolders(folders: FolderInput[]): Promise<{success: true}> {
     if (!Array.isArray(folders)) throw new Error('Request body must be an array')
 
-    await Promise.all(folders.map((folder) => mkdir(safeDataPath(folder.hostPath ?? folder.path ?? ''), {recursive: true})))
+    const dockerInfo = await docker.info()
+    const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
+    const nodes = await fetchNodes()
+
+    await Promise.all(nodes.map(async (node) => {
+        if (node.id === localNodeId) {
+            await Promise.all(folders.map((folder) => mkdir(safeDataPath(folder.hostPath ?? folder.path ?? ''), {recursive: true})))
+        } else {
+            try {
+                if (agentHealthClient && node.id) await agentHealthClient.createFolders(node.id, folders)
+            } catch (error) {
+                console.error(`Failed to create folders on node ${node.id}:`, error)
+            }
+        }
+    }))
+
     return {success: true}
 }
 
 export async function createFiles(files: FileInput[]): Promise<{message: string}> {
     if (!Array.isArray(files)) throw new Error('Request body must be an array')
 
-    await Promise.all(files.map(async (file) => {
-        if (!file.fileName || file.fileContent === undefined || !file.hostPath) {
-            throw new Error('fileName, fileContent and hostPath are required')
-        }
+    const dockerInfo = await docker.info()
+    const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
+    const nodes = await fetchNodes()
 
-        const filePath = safeDataPath(file.hostPath, file.fileName)
-        await mkdir(path.dirname(filePath), {recursive: true})
-        await writeFile(filePath, file.fileContent)
+    await Promise.all(nodes.map(async (node) => {
+        if (node.id === localNodeId) {
+            await Promise.all(files.map(async (file) => {
+                if (!file.fileName || file.fileContent === undefined || !file.hostPath) {
+                    throw new Error('fileName, fileContent and hostPath are required')
+                }
+                const filePath = safeDataPath(file.hostPath, file.fileName)
+                await mkdir(path.dirname(filePath), {recursive: true})
+                await writeFile(filePath, file.fileContent)
+            }))
+        } else {
+            try {
+                if (agentHealthClient && node.id) await agentHealthClient.createFiles(node.id, files)
+            } catch (error) {
+                console.error(`Failed to create files on node ${node.id}:`, error)
+            }
+        }
     }))
 
     return {message: 'File successfully created!'}

@@ -8,7 +8,7 @@
                     <v-col cols="12" md="3"><v-select v-model="since" :items="sinceOptions" :label="t('taskLogs.since')" @update:model-value="reconnect"/></v-col>
                     <v-col cols="12" md="3"><v-combobox v-model="include" chips clearable multiple :label="t('taskLogs.include')" @update:model-value="reconnect"/></v-col>
                     <v-col cols="12" md="3"><v-combobox v-model="exclude" chips clearable multiple :label="t('taskLogs.exclude')" @update:model-value="reconnect"/></v-col>
-                    <v-col cols="12" md="1"><v-text-field v-model.number="tail" min="1" :max="2000" type="number" :label="t('taskLogs.lines')" @change="reconnect"/></v-col>
+                    <v-col cols="12" md="1"><v-text-field v-model.number="tail" min="1" :max="maxLogsLines" type="number" :label="t('taskLogs.lines')" @change="reconnect"/></v-col>
                     <v-col class="d-flex align-center" cols="12" md="2"><v-switch v-model="timestamps" :label="t('taskLogs.timestamps')" @update:model-value="reconnect"/><v-switch v-model="paused" :label="t('taskLogs.pause')" @update:model-value="togglePause"/></v-col>
                 </v-row>
                 <v-progress-linear v-if="connecting" indeterminate/>
@@ -24,8 +24,8 @@ import {useI18n} from 'vue-i18n'
 import {useRoute} from 'vue-router'
 import {useAuthStore} from '@drax/identity-vue'
 import LogTerminal from '@/components/logs/LogTerminal.vue'
+import { SettingsApi } from '../../providers/SettingsApi'
 
-const MAX_TASK_LOG_LINES = 2_000
 const route = useRoute()
 const {t} = useI18n()
 const authStore = useAuthStore()
@@ -37,6 +37,7 @@ const include = ref<string[]>([])
 const exclude = ref<string[]>([])
 const paused = ref(false)
 const connecting = ref(false)
+const maxLogsLines = ref(10000)
 let socket: WebSocket | undefined
 
 const taskId = computed(() => String(route.params.taskId))
@@ -67,7 +68,7 @@ function closeSocket(): void {
 
 function reconnect(): void {
     if (paused.value) return
-    const validTail = Math.min(MAX_TASK_LOG_LINES, Math.max(1, Math.trunc(Number(tail.value) || 1)))
+    const validTail = Math.min(maxLogsLines.value, Math.max(1, Math.trunc(Number(tail.value) || 1)))
     tail.value = validTail
     closeSocket()
     logTerminal.value?.clear()
@@ -95,6 +96,14 @@ function togglePause(): void {
     else reconnect()
 }
 
-onMounted(reconnect)
+onMounted(async () => {
+    try {
+        const settings = await SettingsApi.getSettings()
+        maxLogsLines.value = settings.maxLogsLines
+    } catch (e) {
+        console.error('Failed to load settings', e)
+    }
+    reconnect()
+})
 onBeforeUnmount(closeSocket)
 </script>

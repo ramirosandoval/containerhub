@@ -1,8 +1,21 @@
+import {IdentityRoutes} from '@drax/identity-vue'
 import {useAuthStore} from '@drax/identity-vue'
 import {AuthHelper} from '@drax/identity-front'
 import {createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw} from 'vue-router'
 
-const routes: RouteRecordRaw[] = [
+const appRoutes: RouteRecordRaw[] = [
+    {
+        path: '/monitoring', name: 'monitoring', component: () => import('@/pages/MonitoringPage.vue'),
+        meta: {title: 'monitoring.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
+    {
+        path: '/monitoring/:id', name: 'monitoring-history', component: () => import('@/pages/MonitoringHistoryPage.vue'),
+        meta: {title: 'monitoring.history', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
+    {
+        path: '/tasks-monitorization', name: 'tasks-monitorization', component: () => import('@/pages/TasksMonitorizationPage.vue'),
+        meta: {title: 'tasksMonitorization.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
     {
         path: '/',
         name: 'home',
@@ -40,6 +53,18 @@ const routes: RouteRecordRaw[] = [
         meta: {title: 'networks.title', requiresAuth: true, permission: 'DOCKER_NETWORK_VIEW'}
     },
     {
+        path: '/docker/version',
+        name: 'docker-version',
+        component: () => import('@/pages/DockerVersionPage.vue'),
+        meta: {title: 'dockerVersion.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
+    {
+        path: '/cluster',
+        name: 'cluster',
+        component: () => import('@/pages/ClusterInformationPage.vue'),
+        meta: {title: 'cluster.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
+    {
         path: '/registry-images',
         name: 'registry-images',
         component: () => import('@/pages/RegistryImagesPage.vue'),
@@ -58,6 +83,18 @@ const routes: RouteRecordRaw[] = [
         meta: {title: 'services.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
     },
     {
+        path: '/inspect/:taskId',
+        name: 'task-inspect',
+        component: () => import('@/pages/services/TaskInspectPage.vue'),
+        meta: {title: 'taskInspect.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
+    {
+        path: '/statistics/:taskId',
+        name: 'task-statistics',
+        component: () => import('@/pages/services/TaskStatisticsPage.vue'),
+        meta: {title: 'taskStatistics.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+    },
+    {
         path: '/logs/:taskId',
         name: 'task-logs',
         component: () => import('@/pages/logs/TaskLogsPage.vue'),
@@ -68,12 +105,32 @@ const routes: RouteRecordRaw[] = [
         name: 'task-terminal',
         component: () => import('@/pages/services/TaskTerminalPage.vue'),
         meta: {title: 'taskTerminal.title', requiresAuth: true, permission: 'DOCKER_TERMINAL'}
+    },
+    {
+        path: '/settings',
+        name: 'settings',
+        component: () => import('@/pages/settings/SettingsPage.vue'),
+        meta: {title: 'settings.title', requiresAuth: true, permission: 'SETTINGS_SHOW'}
     }
 ]
 
+// Filter out CrudTenant and map to use requiresAuth for containerhub router guards.
+const draxRoutes = [...IdentityRoutes]
+    .filter(route => route.name !== 'CrudTenant')
+    .map(route => {
+        if (route.meta && (route.meta.auth === true || route.meta.auth === false)) {
+            const { auth, ...restMeta } = route.meta as any
+            return {
+                ...route,
+                meta: { ...restMeta, requiresAuth: auth }
+            }
+        }
+        return route
+    })
+
 export const router = createRouter({
     history: createWebHistory(),
-    routes
+    routes: [...appRoutes, ...draxRoutes]
 })
 
 function loginDestination(to: RouteLocationNormalized): string {

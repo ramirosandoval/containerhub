@@ -39,5 +39,5 @@ test('decodes multiplexed log frames split across stream chunks', () => {
 test('accepts bounded positive task log tails', () => {
     assert.equal(parseTaskLogTail('30'), 30)
     assert.throws(() => parseTaskLogTail('0'), /positive integer/)
-    assert.throws(() => parseTaskLogTail('2001'), /at most 2000/)
+    assert.throws(() => parseTaskLogTail('10001'), /at most 10000/)
 })

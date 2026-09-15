@@ -1,5 +1,6 @@
 import {fetchService, findServiceById, dockerRestart, dockerRemove} from '../services/ServiceService.js'
 import {DockerPermissions} from '../permissions/DockerPermissions.js'
+import {serviceMutationContext} from '../services/ServiceMutationAudit.js'
 
 export const resolvers = {
     Query: {
@@ -15,11 +16,11 @@ export const resolvers = {
     Mutation: {
         dockerRestart: (_: any, args: {serviceId: string}, context: any) => {
             context.rbac.assertPermission(DockerPermissions.Restart)
-            return dockerRestart(args.serviceId)
+            return dockerRestart(args.serviceId, serviceMutationContext(context.request))
         },
         dockerRemove: (_: any, args: {serviceId: string}, context: any) => {
             context.rbac.assertPermission(DockerPermissions.Remove)
-            return dockerRemove(args.serviceId)
+            return dockerRemove(args.serviceId, serviceMutationContext(context.request))
         }
     }
 }

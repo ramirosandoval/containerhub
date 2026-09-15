@@ -4,7 +4,10 @@
             <v-card-title>{{ t('taskTerminal.title') }}</v-card-title>
             <v-card-subtitle>{{ taskId }}</v-card-subtitle>
             <v-card-text>
-                <v-alert v-if="error" type="error">{{ error }}</v-alert>
+                <v-alert v-if="error" type="error">
+                    {{ error }}
+                    <template v-if="shell" #append><v-btn variant="text" :disabled="connecting" @click="retry">{{ t('taskTerminal.retry') }}</v-btn></template>
+                </v-alert>
                 <v-progress-linear v-else-if="connecting" indeterminate/>
                 <div ref="terminalElement" class="task-terminal"/>
             </v-card-text>
@@ -19,7 +22,8 @@ import {useRoute} from 'vue-router'
 import {Terminal} from '@xterm/xterm'
 import {FitAddon} from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import {consumeTerminalTicket} from '@/pages/services/terminalTickets'
+import {restPost} from '@/rest'
+import {consumeTerminalTicket, type TerminalShell} from '@/pages/services/terminalTickets'
 
 const route = useRoute()
 const {t} = useI18n()
@@ -32,6 +36,9 @@ const fitAddon = new FitAddon()
 let socket: WebSocket | undefined
 let resizeObserver: ResizeObserver | undefined
 let disposeInput: (() => void) | undefined
+let shell: TerminalShell | undefined
+let terminalOpened = false
+let disposed = false
 let selectionAnchor: number | undefined
 let selectionCursor: number | undefined
 
@@ -77,45 +84,103 @@ function sendResize(): void {
 }
 
 function closeTerminal(): void {
+    disposed = true
     disposeInput?.()
     resizeObserver?.disconnect()
     socket?.close()
     terminal.dispose()
 }
 
-function connect(): void {
-    const ticket = consumeTerminalTicket(taskId)
-    if (!ticket) {
-        error.value = t('taskTerminal.unavailable')
-        return
-    }
+function resetSelection(): void {
+    selectionAnchor = undefined
+    selectionCursor = undefined
+}
+
+function sendInput(input: Uint8Array): void {
+    resetSelection()
+    if (socket?.readyState === WebSocket.OPEN) socket.send(input)
+}
+
+function openTerminal(): void {
+    if (terminalOpened) return
+    terminalOpened = true
+    terminal.open(terminalElement.value!)
+    terminal.focus()
+    fitAddon.fit()
+    const textInput = terminal.onData((input) => sendInput(new TextEncoder().encode(input)))
+    const binaryInput = terminal.onBinary((input) => sendInput(Uint8Array.from(input, (character) => character.charCodeAt(0))))
+    disposeInput = () => { textInput.dispose(); binaryInput.dispose() }
+    resizeObserver = new ResizeObserver(() => {
+        fitAddon.fit()
+        sendResize()
+    })
+    resizeObserver.observe(terminalElement.value!)
+}
+
+function connectTicket(ticket: string): void {
+    if (disposed) return
     connecting.value = true
+    error.value = ''
     const currentSocket = new WebSocket(terminalSocketUrl(), [`terminal.${ticket}`])
     currentSocket.binaryType = 'arraybuffer'
     socket = currentSocket
     currentSocket.addEventListener('open', () => {
-        connecting.value = false
-        terminal.open(terminalElement.value!)
-        terminal.focus()
-        fitAddon.fit()
-        disposeInput = terminal.onData((input) => {
-            selectionAnchor = undefined
-            selectionCursor = undefined
-            if (currentSocket.readyState === WebSocket.OPEN) currentSocket.send(new TextEncoder().encode(input))
-        }).dispose
-        resizeObserver = new ResizeObserver(() => {
-            fitAddon.fit()
-            sendResize()
-        })
-        resizeObserver.observe(terminalElement.value!)
+        if (socket !== currentSocket || disposed) return
+        openTerminal()
         sendResize()
     })
-    currentSocket.addEventListener('message', (event) => terminal.write(new Uint8Array(event.data as ArrayBuffer)))
-    currentSocket.addEventListener('close', () => { if (socket === currentSocket) socket = undefined })
-    currentSocket.addEventListener('error', () => {
-        error.value = t('taskTerminal.disconnected')
-        currentSocket.close()
+    currentSocket.addEventListener('message', (event) => {
+        if (socket !== currentSocket || disposed) return
+        if (typeof event.data === 'string') {
+            try {
+                const message = JSON.parse(event.data) as {type?: unknown}
+                if (message.type === 'ready') connecting.value = false
+                else throw new Error()
+            } catch {
+                error.value = t('taskTerminal.disconnected')
+                currentSocket.close(1002)
+            }
+            return
+        }
+        terminal.write(new Uint8Array(event.data as ArrayBuffer))
     })
+    currentSocket.addEventListener('close', (event) => {
+        if (socket !== currentSocket) return
+        socket = undefined
+        connecting.value = false
+        if (!disposed) error.value = event.reason ? `${t('taskTerminal.disconnected')} ${event.reason}` : t('taskTerminal.disconnected')
+    })
+    currentSocket.addEventListener('error', () => {
+        if (socket !== currentSocket) return
+        error.value = t('taskTerminal.disconnected')
+    })
+}
+
+function connect(): void {
+    const session = consumeTerminalTicket(taskId)
+    if (!session) {
+        error.value = t('taskTerminal.unavailable')
+        return
+    }
+    shell = session.shell
+    connectTicket(session.ticket)
+}
+
+async function retry(): Promise<void> {
+    if (!shell || connecting.value) return
+    socket?.close()
+    socket = undefined
+    connecting.value = true
+    error.value = ''
+    try {
+        const session = await restPost<{ticket: string}>(`/api/docker/task/${taskId}/terminal-sessions`, {shell})
+        if (disposed) return
+        connectTicket(session.ticket)
+    } catch (requestError) {
+        if (disposed) return
+        connecting.value = false
+        error.value = requestError instanceof Error ? requestError.message : t('taskTerminal.unavailable')
+    }
 }
 
 onMounted(connect)

@@ -27,3 +27,40 @@ test('services retain the original expandable task list and separate logs page',
     assert.match(servicesPage, /DOCKER_TERMINAL/)
     assert.match(rest, /export async function restPost/)
 })
+
+test('task terminal waits for backend readiness, forwards binary input and offers a fresh-ticket retry', async () => {
+    const source = await readFile(new URL('../TaskTerminalPage.vue', import.meta.url), 'utf8')
+
+    assert.match(source, /message\.type === 'ready'/)
+    assert.match(source, /terminal\.onBinary/)
+    assert.match(source, /event\.reason/)
+    assert.match(source, /terminal-sessions/)
+    assert.match(source, /taskTerminal\.retry/)
+})
+
+test('services restart one or many selected rows through one bulk action', async () => {
+    const servicesPage = await readFile(new URL('../ServicesPage.vue', import.meta.url), 'utf8')
+
+    assert.match(servicesPage, /v-model="selected"/)
+    assert.match(servicesPage, /:show-select="authStore\.hasPermission\('DOCKER_RESTART'\) \|\| authStore\.hasPermission\('DOCKER_REMOVE'\)"/)
+    assert.match(servicesPage, /return-object/)
+    assert.match(servicesPage, /hasPermission\('DOCKER_RESTART'\)/)
+    assert.match(servicesPage, /restartSelectedConfirmation/)
+    assert.match(servicesPage, /\/api\/docker\/service\/restart/)
+    assert.match(servicesPage, /serviceIds: selected\.value\.map/)
+    assert.match(servicesPage, /await doPaginate\(\)/)
+    assert.doesNotMatch(servicesPage, /\/api\/docker\/service\/restart\/\$\{/)
+})
+
+test('services remove one or many selected rows through one destructive action', async () => {
+    const servicesPage = await readFile(new URL('../ServicesPage.vue', import.meta.url), 'utf8')
+
+    assert.match(servicesPage, /hasPermission\('DOCKER_REMOVE'\)/)
+    assert.match(servicesPage, /removeSelectedConfirmation/)
+    assert.match(servicesPage, /services\.removeIrreversible/)
+    assert.match(servicesPage, /\/api\/docker\/service\/remove/)
+    assert.match(servicesPage, /serviceIds: selected\.value\.map/)
+    assert.match(servicesPage, /removeResults\.value = results\.map/)
+    assert.match(servicesPage, /await doPaginate\(\)/)
+    assert.doesNotMatch(servicesPage, /\/api\/docker\/service\/remove\/\$\{/)
+})

@@ -15,3 +15,9 @@ export async function restPost<Response>(path: string, body: unknown): Promise<R
     const headers = authorizationHeader(useAuthStore().accessToken)
     return client.post(path, body, {headers}) as Promise<Response>
 }
+
+export async function restPut<Response>(path: string, body: unknown): Promise<Response> {
+    const client = HttpRestClientFactory.getInstance(REST_BASE)
+    const headers = authorizationHeader(useAuthStore().accessToken)
+    return client.put(path, body, {headers}) as Promise<Response>
+}

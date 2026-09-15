@@ -1,4 +1,7 @@
+import {monitoringEs, monitoringEn} from './monitoring'
+
 export const es = {
+    monitoring: monitoringEs,
     user: {field: {role: 'Rol'}},
     app: {
         services: 'Servicios',
@@ -10,6 +13,7 @@ export const es = {
         nodes: 'Nodes',
         ghostContainers: 'Ghost containers',
         networks: 'Networks',
+        dockerVersion: 'Versión de Docker',
         registryImages: 'Registry images',
         gitLabProjects: 'GitLab projects',
     },
@@ -20,9 +24,22 @@ export const es = {
         open: 'Abrir servicios',
         openServices: 'Abrir servicios de {stack}',
     },
-    nodes: {title: 'Nodos', id: 'ID', hostname: 'Host', ip: 'IP', role: 'Rol', availability: 'Disponibilidad', state: 'Estado', engine: 'Motor', leader: 'Líder', reachability: 'Alcanzabilidad'},
+    nodes: {title: 'Nodos', id: 'ID', hostname: 'Host', ip: 'IP', role: 'Rol', availability: 'Disponibilidad', state: 'Estado', engine: 'Motor', leader: 'Líder', reachability: 'Alcanzabilidad', agent: 'Agent', resources: 'Recursos'},
     ghostContainers: {title: 'Contenedores huérfanos', created: 'Creado', image: 'Imagen', status: 'Estado', id: 'ID', node: 'Nodo'},
-    networks: {title: 'Redes', name: 'Nombre', created: 'Creada', driver: 'Driver', attachable: 'Adjuntable', ipamDriver: 'Driver IPAM', subnet: 'Subred', gateway: 'Gateway'},
+    networks: {title: 'Redes', name: 'Nombre', created: 'Creada', driver: 'Driver', attachable: 'Adjuntable', ipamDriver: 'Driver IPAM', subnet: 'Subred', gateway: 'Gateway', createdFrom: 'Creada desde', createdTo: 'Creada hasta', yes: 'Sí', no: 'No', apply: 'Aplicar', reset: 'Limpiar', refresh: 'Actualizar redes'},
+    dockerVersion: {title: 'Versión de Docker', engine: 'Versión del motor', api: 'Versión de la API'},
+    cluster: {
+        title: 'Información del clúster', nodes: 'Nodos', services: 'Servicios', tasks: 'Tareas', taskHint: 'Incluye las tareas históricas que Docker conserva, no solo las que están en ejecución.', error: 'No se pudo cargar la información del clúster.', retry: 'Reintentar',
+        visualizer: {
+            title: 'Visualizador del clúster', subtitle: 'Vista en detalle de los nodos del clúster y sus respectivas tareas',
+            nodeHeaders: {status: 'Estado', hostname: 'Host', role: 'Rol', cpuMemory: 'CPU / Memoria', labels: 'Labels'},
+            taskHeaders: {state: 'Estado', updatedAt: 'Última actualización', name: 'Nombre', image: 'Imagen'}
+        },
+        options: {
+            title: 'Opciones de visualización', subtitle: 'Seleccione cómo desea mostrar la información y la frecuencia de actualización',
+            onlyDisplayRunningTasks: 'Mostrar solo tareas en ejecución', displayNodeLabels: 'Mostrar etiquetas de nodos', autoRefresh: 'Actualización automática', refreshRate: 'Frecuencia de actualización'
+        }
+    },
     registryImages: {title: 'Imágenes de registro', name: 'Nombre', tags: 'Tags', loadTags: 'Ver tags'},
     gitLabProjects: {title: 'Proyectos GitLab', id: 'ID', namespace: 'Namespace', name: 'Nombre', tags: 'Tags', loadTags: 'Ver tags'},
     service: {
@@ -52,17 +69,38 @@ export const es = {
         refresh: 'Actualizar',
         restart: 'Reiniciar',
         restartSelected: 'Reiniciar seleccionados',
+        restartResults: 'Resultado del reinicio',
+        restartSucceeded: 'Reinicio solicitado',
+        restartFailed: 'No se pudo reiniciar',
+        cancel: 'Cancelar',
         remove: 'Eliminar',
         removeSelected: 'Eliminar seleccionados',
-        restartSelectedConfirmation: '¿Reiniciar los servicios seleccionados?',
-        removeSelectedConfirmation: '¿Eliminar los servicios seleccionados?',
+        restartSelectedConfirmation: 'Se reiniciarán los servicios seleccionados ({count}).',
+        removeSelectedConfirmation: 'Se eliminarán los servicios seleccionados ({count}).',
+        removeIrreversible: 'Esta acción es irreversible.',
+        removeResults: 'Resultado de la eliminación',
+        removeSucceeded: 'Servicio eliminado',
+        removeFailed: 'No se pudo eliminar',
         removeConfirmation: '¿Eliminar este servicio?',
     },
     taskLogs: {title: 'Logs de tarea', unknownService: 'Servicio', since: 'Desde', all: 'Todo el historial', day: 'Último día', hours: 'Últimas 4 horas', hour: 'Última hora', minutes: 'Últimos 30 minutos', include: 'Incluir', exclude: 'Excluir', lines: 'Cantidad de líneas', timestamps: 'Timestamps', pause: 'Pausar'},
-    taskTerminal: {title: 'Terminal de tarea', unavailable: 'La sesión de terminal no está disponible. Volvé a abrirla desde la tarea.', disconnected: 'La terminal se desconectó.'},
+    taskInspect: {
+        title: 'Inspección de tarea', service: 'Servicio', error: 'No se pudo cargar la inspección de la tarea.', retry: 'Reintentar',
+        refresh: 'Actualizar', lastRead: 'Última lectura', observed: 'Estado observado', desired: 'Estado deseado', node: 'Nodo', container: 'Contenedor', image: 'Imagen', created: 'Creada', updated: 'Actualizada', message: 'Mensaje', exitCode: 'Código de salida', executionError: 'Error de ejecución',
+        stale: 'No se pudo actualizar. Se muestran los datos de la última lectura exitosa.', detail: 'Detalle de la inspección', tree: 'Árbol', search: 'Buscar clave o valor', expand: 'Expandir todo', collapse: 'Contraer todo', noMatches: 'Sin coincidencias',
+        sensitive: 'El JSON completo puede contener datos sensibles. Revisalo antes de compartirlo.', copy: 'Copiar JSON', copied: 'JSON copiado.', copyError: 'No se pudo copiar. Seleccioná y copiá el JSON manualmente.', fullJson: 'JSON completo'
+    },
+    taskTerminal: {title: 'Terminal de tarea', unavailable: 'La sesión de terminal no está disponible. Volvé a abrirla desde la tarea.', disconnected: 'La terminal se desconectó.', retry: 'Reintentar'},
+    taskStatistics: {
+        title: 'Estadísticas de tarea', refresh: 'Actualizar', autoRefresh: 'Actualización automática', interval: 'Intervalo',
+        error: 'No se pudieron cargar las estadísticas.', stale: 'No se pudo actualizar. Se muestran las últimas muestras.', unavailable: 'La tarea no tiene métricas disponibles.',
+        cpu: 'CPU', memory: 'Memoria', io: 'Lectura / escritura', network: 'Red recibida / enviada', sampledAt: 'Muestra',
+        cpuThreshold: 'Alerta CPU (%)', memoryThreshold: 'Alerta memoria (GB)', ioThreshold: 'Alerta lectura (MB)', networkThreshold: 'Alerta red recibida (MB)'
+    },
 }
 
 export const en = {
+    monitoring: monitoringEn,
     user: {field: {role: 'Role'}},
     app: {
         services: 'Services',
@@ -74,6 +112,7 @@ export const en = {
         nodes: 'Nodes',
         ghostContainers: 'Ghost containers',
         networks: 'Networks',
+        dockerVersion: 'Docker version',
         registryImages: 'Registry images',
         gitLabProjects: 'GitLab projects',
     },
@@ -84,9 +123,22 @@ export const en = {
         open: 'Open services',
         openServices: 'Open services for {stack}',
     },
-    nodes: {title: 'Nodes', id: 'ID', hostname: 'Host', ip: 'IP', role: 'Role', availability: 'Availability', state: 'State', engine: 'Engine', leader: 'Leader', reachability: 'Reachability'},
+    nodes: {title: 'Nodes', id: 'ID', hostname: 'Host', ip: 'IP', role: 'Role', availability: 'Availability', state: 'State', engine: 'Engine', leader: 'Leader', reachability: 'Reachability', agent: 'Agent', resources: 'Resources'},
     ghostContainers: {title: 'Ghost containers', created: 'Created', image: 'Image', status: 'Status', id: 'ID', node: 'Node'},
-    networks: {title: 'Networks', name: 'Name', created: 'Created', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Subnet', gateway: 'Gateway'},
+    networks: {title: 'Networks', name: 'Name', created: 'Created', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Subnet', gateway: 'Gateway', createdFrom: 'Created from', createdTo: 'Created to', yes: 'Yes', no: 'No', apply: 'Apply', reset: 'Clear', refresh: 'Refresh networks'},
+    dockerVersion: {title: 'Docker version', engine: 'Engine version', api: 'API version'},
+    cluster: {
+        title: 'Cluster information', nodes: 'Nodes', services: 'Services', tasks: 'Tasks', taskHint: 'Includes historical tasks retained by Docker, not only running tasks.', error: 'Could not load cluster information.', retry: 'Retry',
+        visualizer: {
+            title: 'Cluster visualizer', subtitle: 'Detailed view of the cluster nodes and their respective tasks',
+            nodeHeaders: {status: 'Status', hostname: 'Hostname', role: 'Role', cpuMemory: 'CPU / Memory', labels: 'Labels'},
+            taskHeaders: {state: 'State', updatedAt: 'Updated at', name: 'Name', image: 'Image'}
+        },
+        options: {
+            title: 'Display options', subtitle: 'Select how you want to display the information and the update frequency',
+            onlyDisplayRunningTasks: 'Only display running tasks', displayNodeLabels: 'Display node labels', autoRefresh: 'Auto refresh', refreshRate: 'Refresh rate'
+        }
+    },
     registryImages: {title: 'Registry images', name: 'Name', tags: 'Tags', loadTags: 'Load tags'},
     gitLabProjects: {title: 'GitLab projects', id: 'ID', namespace: 'Namespace', name: 'Name', tags: 'Tags', loadTags: 'Load tags'},
     service: {
@@ -116,12 +168,32 @@ export const en = {
         refresh: 'Refresh',
         restart: 'Restart',
         restartSelected: 'Restart selected',
+        restartResults: 'Restart results',
+        restartSucceeded: 'Restart requested',
+        restartFailed: 'Restart failed',
+        cancel: 'Cancel',
         remove: 'Remove',
         removeSelected: 'Remove selected',
-        restartSelectedConfirmation: 'Restart the selected services?',
-        removeSelectedConfirmation: 'Remove the selected services?',
+        restartSelectedConfirmation: 'The selected services will be restarted ({count}).',
+        removeSelectedConfirmation: 'The selected services will be removed ({count}).',
+        removeIrreversible: 'This action cannot be undone.',
+        removeResults: 'Removal results',
+        removeSucceeded: 'Service removed',
+        removeFailed: 'Removal failed',
         removeConfirmation: 'Remove this service?',
     },
     taskLogs: {title: 'Task logs', unknownService: 'Service', since: 'Since', all: 'All history', day: 'Last day', hours: 'Last 4 hours', hour: 'Last hour', minutes: 'Last 30 minutes', include: 'Include', exclude: 'Exclude', lines: 'Line count', timestamps: 'Timestamps', pause: 'Pause'},
-    taskTerminal: {title: 'Task terminal', unavailable: 'The terminal session is unavailable. Open it again from the task.', disconnected: 'The terminal disconnected.'},
+    taskInspect: {
+        title: 'Task inspection', service: 'Service', error: 'Could not load the task inspection.', retry: 'Retry',
+        refresh: 'Refresh', lastRead: 'Last read', observed: 'Observed state', desired: 'Desired state', node: 'Node', container: 'Container', image: 'Image', created: 'Created', updated: 'Updated', message: 'Message', exitCode: 'Exit code', executionError: 'Execution error',
+        stale: 'Could not refresh. Showing data from the last successful read.', detail: 'Inspection details', tree: 'Tree', search: 'Search key or value', expand: 'Expand all', collapse: 'Collapse all', noMatches: 'No matches',
+        sensitive: 'The full JSON may contain sensitive data. Review it before sharing.', copy: 'Copy JSON', copied: 'JSON copied.', copyError: 'Could not copy. Select and copy the JSON manually.', fullJson: 'Full JSON'
+    },
+    taskTerminal: {title: 'Task terminal', unavailable: 'The terminal session is unavailable. Open it again from the task.', disconnected: 'The terminal disconnected.', retry: 'Retry'},
+    taskStatistics: {
+        title: 'Task statistics', refresh: 'Refresh', autoRefresh: 'Auto refresh', interval: 'Interval',
+        error: 'Could not load task statistics.', stale: 'Could not refresh. Showing the latest samples.', unavailable: 'The task has no available metrics.',
+        cpu: 'CPU', memory: 'Memory', io: 'Read / write', network: 'Network received / sent', sampledAt: 'Sample',
+        cpuThreshold: 'CPU warning (%)', memoryThreshold: 'Memory warning (GB)', ioThreshold: 'Read warning (MB)', networkThreshold: 'Network received warning (MB)'
+    },
 }
