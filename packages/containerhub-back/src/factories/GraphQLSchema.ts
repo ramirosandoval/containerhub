@@ -10,5 +10,5 @@ export const typeDefs = mergeTypeDefs(
 )
 
 export const resolvers = mergeResolvers(
-    loadFilesSync(path.join(__dirname, '../modules'), {extensions: ['.resolvers.ts'], recursive: true})
+    loadFilesSync(path.join(__dirname, '../modules'), {extensions: [`.resolvers${path.extname(fileURLToPath(import.meta.url))}`], recursive: true})
 )

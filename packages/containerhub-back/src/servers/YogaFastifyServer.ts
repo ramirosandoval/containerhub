@@ -7,7 +7,6 @@ export default class YogaFastifyServer {
 
     constructor(typeDefs: any, resolvers: any) {
         this.fastify = Fastify({logger: true})
-        // Drax validates requests at the service layer, not through Fastify schemas.
         this.fastify.setValidatorCompiler(() => () => true)
         this.yoga = createYoga({
             schema: createSchema({typeDefs, resolvers}),
@@ -20,7 +19,8 @@ export default class YogaFastifyServer {
             handler: async (req: any, reply: any) => {
                 const response = await this.yoga.handleNodeRequestAndResponse(req, reply, {
                     authUser: req.authUser,
-                    rbac: req.rbac
+                    rbac: req.rbac,
+                    request: req
                 })
                 response.headers.forEach((value: string, key: string) => reply.header(key, value))
                 reply.status(response.status)

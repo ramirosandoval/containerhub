@@ -5,6 +5,7 @@ import YogaFastifyServerFactory from '../YogaFastifyServerFactory.js'
 type DocumentedOperation = {
     summary?: string
     parameters?: Array<{name?: string}>
+    requestBody?: unknown
     responses?: Record<string, unknown>
     security?: Array<{bearerAuth?: string[]}>
 }
@@ -34,6 +35,9 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
         assert.equal(paginatedServices?.parameters?.some((parameter) => parameter.name === 'orderBy'), true)
         assert.equal(documentedPaths['/api/registry/image']?.get?.summary, 'List registry images')
         assert.equal(documentedPaths['/api/gitlab/project']?.get?.summary, 'List GitLab projects')
+        assert.ok(documentedPaths['/api/settings']?.put?.requestBody)
+        assert.ok(documentedPaths['/api/docker/service']?.post?.requestBody)
+        assert.ok(documentedPaths['/api/docker/service/{service}']?.put?.requestBody)
 
         const localOperations = Object.entries(documentedPaths)
             .filter(([path]) => /^\/api\/(services|docker|registry|gitlab)/.test(path))

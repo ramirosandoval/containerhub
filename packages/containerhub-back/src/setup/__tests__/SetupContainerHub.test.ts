@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {validateContainerHubEnvironment} from '../SetupContainerHub.js'
+import {
+    resolveContainerHubBootstrapUser,
+    validateContainerHubEnvironment
+} from '../SetupContainerHub.js'
 
 const validMongoEnvironment: NodeJS.ProcessEnv = {
     DRAX_DB_ENGINE: 'mongo',
@@ -8,8 +11,119 @@ const validMongoEnvironment: NodeJS.ProcessEnv = {
     DRAX_JWT_SECRET: 'test-only-secret'
 }
 
+const enabledBootstrapEnvironment: NodeJS.ProcessEnv = {
+    CONTAINERHUB_BOOTSTRAP_ENABLED: 'true',
+    CONTAINERHUB_BOOTSTRAP_NAME: 'Initial Administrator',
+    CONTAINERHUB_BOOTSTRAP_USERNAME: 'initial-admin',
+    CONTAINERHUB_BOOTSTRAP_PASSWORD: 'test-only-bootstrap-password',
+    CONTAINERHUB_BOOTSTRAP_EMAIL: 'initial-admin@example.com',
+    CONTAINERHUB_BOOTSTRAP_PHONE: '+15550000000'
+}
+
+test('accepts enabled bootstrap with every required identity value', () => {
+    assert.doesNotThrow(() => validateContainerHubEnvironment({
+        ...validMongoEnvironment,
+        ...enabledBootstrapEnvironment
+    }))
+    assert.deepEqual(resolveContainerHubBootstrapUser(enabledBootstrapEnvironment), {
+        active: true,
+        name: 'Initial Administrator',
+        username: 'initial-admin',
+        password: 'test-only-bootstrap-password',
+        email: 'initial-admin@example.com',
+        phone: '+15550000000',
+        role: 'Admin'
+    })
+})
+
+test('rejects enabled bootstrap when the username is missing', () => {
+    const environment = {...enabledBootstrapEnvironment}
+    delete environment.CONTAINERHUB_BOOTSTRAP_USERNAME
+
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, ...environment}),
+        /CONTAINERHUB_BOOTSTRAP_USERNAME must be configured when CONTAINERHUB_BOOTSTRAP_ENABLED=true/
+    )
+})
+
+test('rejects enabled bootstrap when the password is missing instead of using a default', () => {
+    const environment = {...enabledBootstrapEnvironment}
+    delete environment.CONTAINERHUB_BOOTSTRAP_PASSWORD
+
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, ...environment}),
+        /CONTAINERHUB_BOOTSTRAP_PASSWORD must be configured when CONTAINERHUB_BOOTSTRAP_ENABLED=true/
+    )
+})
+
+test('rejects enabled bootstrap when the Drax-required name is missing', () => {
+    const environment = {...enabledBootstrapEnvironment}
+    delete environment.CONTAINERHUB_BOOTSTRAP_NAME
+
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, ...environment}),
+        /CONTAINERHUB_BOOTSTRAP_NAME must be configured when CONTAINERHUB_BOOTSTRAP_ENABLED=true/
+    )
+})
+
+test('rejects enabled bootstrap when the Drax-required email is missing', () => {
+    const environment = {...enabledBootstrapEnvironment}
+    delete environment.CONTAINERHUB_BOOTSTRAP_EMAIL
+
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, ...environment}),
+        /CONTAINERHUB_BOOTSTRAP_EMAIL must be configured when CONTAINERHUB_BOOTSTRAP_ENABLED=true/
+    )
+})
+
+test('rejects enabled bootstrap when the Drax-required phone is missing', () => {
+    const environment = {...enabledBootstrapEnvironment}
+    delete environment.CONTAINERHUB_BOOTSTRAP_PHONE
+
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, ...environment}),
+        /CONTAINERHUB_BOOTSTRAP_PHONE must be configured when CONTAINERHUB_BOOTSTRAP_ENABLED=true/
+    )
+})
+
+test('does not require bootstrap credentials when bootstrap is disabled', () => {
+    const environment = {...validMongoEnvironment, CONTAINERHUB_BOOTSTRAP_ENABLED: 'false'}
+
+    assert.doesNotThrow(() => validateContainerHubEnvironment(environment))
+    assert.equal(resolveContainerHubBootstrapUser(environment), null)
+})
+
+test('defaults bootstrap to disabled when the opt-in variable is absent', () => {
+    assert.equal(resolveContainerHubBootstrapUser({}), null)
+})
+
+test('rejects ambiguous bootstrap enabled values', () => {
+    assert.throws(
+        () => resolveContainerHubBootstrapUser({CONTAINERHUB_BOOTSTRAP_ENABLED: 'yes'}),
+        /CONTAINERHUB_BOOTSTRAP_ENABLED must be configured as true or false/
+    )
+})
+
 test('accepts the mandatory MongoDB and JWT configuration', () => {
     assert.doesNotThrow(() => validateContainerHubEnvironment(validMongoEnvironment))
+})
+
+test('requires the browser terminal origin in production', () => {
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, NODE_ENV: 'production'}),
+        /TERMINAL_ALLOWED_ORIGIN must be configured as an HTTP\(S\) origin in production/
+    )
+    assert.doesNotThrow(() => validateContainerHubEnvironment({
+        ...validMongoEnvironment,
+        NODE_ENV: 'production',
+        TERMINAL_ALLOWED_ORIGIN: 'https://containerhub.example.com'
+    }))
+    for (const invalidOrigin of ['ftp://containerhub.example.com', 'https://containerhub.example.com/path', 'https://user:password@containerhub.example.com']) {
+        assert.throws(
+            () => validateContainerHubEnvironment({...validMongoEnvironment, NODE_ENV: 'production', TERMINAL_ALLOWED_ORIGIN: invalidOrigin}),
+            /TERMINAL_ALLOWED_ORIGIN must be configured as an HTTP\(S\) origin in production/
+        )
+    }
 })
 
 test('rejects startup when DRAX_DB_ENGINE is missing', () => {

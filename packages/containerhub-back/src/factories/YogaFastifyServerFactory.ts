@@ -1,12 +1,17 @@
 import type {FastifySchema, RouteOptions} from 'fastify'
-import {jwtMiddleware, rbacMiddleware, UserRoutes, RoleRoutes, TenantRoutes} from '@drax/identity-back'
+import {jwtMiddleware, rbacMiddleware, UserRoutes, RoleRoutes, TenantRoutes, UserSessionRoutes, UserLoginFailRoutes, UserApiKeyRoutes} from '@drax/identity-back'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import websocket from '@fastify/websocket'
 import {ServiceRoutes} from '../modules/services/routes/ServiceRoutes.js'
+import {SettingsRoutes} from '../modules/settings/routes/SettingsRoutes.js'
 import {TerminalRoutes} from '../modules/services/routes/TerminalRoutes.js'
 import {GitLabRoutes} from '../modules/gitlab/routes/GitLabRoutes.js'
 import {RegistryRoutes} from '../modules/registry/routes/RegistryRoutes.js'
+import {MonitoringRoutes} from '../modules/monitoring/routes/MonitoringRoutes.js'
+import {TaskMonitorizationRoutes} from '../modules/monitoring/routes/TaskMonitorizationRoutes.js'
+import {MediaRoutes} from '@drax/media-back'
+import multipart from '@fastify/multipart'
 import {typeDefs, resolvers} from './GraphQLSchema.js'
 import YogaFastifyServer from '../servers/YogaFastifyServer.js'
 
@@ -89,6 +94,7 @@ export default function YogaFastifyServerFactory() {
         routePrefix: '/documentation',
         uiConfig: {docExpansion: 'list', deepLinking: false}
     })
+    server.fastify.register(multipart)
     server.fastify.register(websocket)
     server.fastify.addHook('onRequest', ((request: any, _reply: any, done: () => void) => {
         setWebSocketAuthorizationHeader(request)
@@ -106,9 +112,18 @@ export default function YogaFastifyServerFactory() {
     server.fastify.register(UserRoutes as any)
     server.fastify.register(RoleRoutes as any)
     server.fastify.register(TenantRoutes as any)
+    server.fastify.register(UserSessionRoutes as any)
+    server.fastify.register(UserLoginFailRoutes as any)
+    server.fastify.register(UserApiKeyRoutes as any)
     server.fastify.register(ServiceRoutes as any)
+    server.fastify.register(SettingsRoutes as any)
     server.fastify.register(TerminalRoutes as any)
     server.fastify.register(GitLabRoutes as any)
     server.fastify.register(RegistryRoutes as any)
+    server.fastify.register(MonitoringRoutes)
+    server.fastify.register(TaskMonitorizationRoutes as any)
+
+    server.fastify.register(MediaRoutes as any)
+
     return server
 }
