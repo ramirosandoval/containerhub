@@ -1,5 +1,6 @@
 export const monitoringEs = {
-    title: 'Configuraciones de monitoreo', notice: 'Las muestras se recolectan mientras el backend está activo y la configuración está habilitada.',
+    title: 'Monitoreo de servicios', notice: 'Las muestras se recolectan mientras el backend está activo y la configuración está habilitada.',
+    field: {service: 'Servicio', stack: 'Stack', type: 'Tipo', status: 'Estado configurado', interval: 'Intervalo', period: 'Período / retención', collectionType: 'Réplicas', since: 'Desde', until: 'Hasta', holdingTime: 'Retención (días)'},
     create: 'Configurar servicios', service: 'Servicio', stack: 'Stack', search: 'Buscar servicio', status: 'Estado configurado', interval: 'Intervalo', period: 'Período / retención', actions: 'Acciones',
     refresh: 'Actualizar', cancel: 'Cancelar', save: 'Guardar', confirm: 'Confirmar', pause: 'Pausar', resume: 'Reanudar', delete: 'Eliminar',
     confirmPause: '¿Pausar esta configuración?', confirmResume: '¿Reanudar esta configuración?', confirmDelete: '¿Eliminar esta configuración? No se elimina el servicio Docker.',
@@ -10,7 +11,8 @@ export const monitoringEs = {
     history: 'Historial de monitoreo', historyFailed: 'No se pudo cargar el historial.', noSamples: 'No hay muestras para el período seleccionado.', apply: 'Aplicar', task: 'Tarea', node: 'Nodo', sampleLimit: 'Máximo de muestras', sampledAt: 'Muestra', cpu: 'CPU', memory: 'Memoria', io: 'Lectura de disco', network: 'Red recibida'
 }
 export const monitoringEn = {
-    title: 'Monitoring configurations', notice: 'Samples are collected while the backend is running and the configuration is enabled.',
+    title: 'Services monitoring', notice: 'Samples are collected while the backend is running and the configuration is enabled.',
+    field: {service: 'Service', stack: 'Stack', type: 'Type', status: 'Configured state', interval: 'Interval', period: 'Period / retention', collectionType: 'Replicas', since: 'From', until: 'Until', holdingTime: 'Retention (days)'},
     create: 'Configure services', service: 'Service', stack: 'Stack', search: 'Search service', status: 'Configured state', interval: 'Interval', period: 'Period / retention', actions: 'Actions',
     refresh: 'Refresh', cancel: 'Cancel', save: 'Save', confirm: 'Confirm', pause: 'Pause', resume: 'Resume', delete: 'Delete',
     confirmPause: 'Pause this configuration?', confirmResume: 'Resume this configuration?', confirmDelete: 'Delete this configuration? The Docker service is not deleted.',

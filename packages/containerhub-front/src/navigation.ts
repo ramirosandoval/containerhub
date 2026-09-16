@@ -24,12 +24,12 @@ export const menu = [
     {
         text: 'menu.administration', icon: 'mdi-shield-account', gallery: true,
         children: [
-            {text: 'Usuarios', link: {name: 'CrudUser'}, icon: 'mdi-account-group', gallery: true, permission: 'user:manage'},
-            {text: 'Roles', link: {name: 'CrudRole'}, icon: 'mdi-shield-account', gallery: true, permission: 'role:manage'},
-            {text: 'API Keys', link: {name: 'CrudUserApiKey'}, icon: 'mdi-table-key', gallery: true, permission: 'userApiKey:manage'},
-            {text: 'Historial de sesiones', link: {name: 'UserSessionCrudPage'}, icon: 'mdi-history', gallery: true, permission: 'usersession:manage'},
-            {text: 'Fallos de inicio de sesión', link: {name: 'UserLoginFailCrudPage'}, icon: 'mdi-alert-circle', gallery: true, permission: 'userloginfail:manage'},
-            {text: 'Configuraciones', link: {name: 'settings'}, icon: 'mdi-cog', gallery: true, permission: 'SETTINGS_SHOW'}
+            {text: 'user.menu', link: {name: 'CrudUser'}, icon: 'mdi-account-group', gallery: true, permission: 'user:manage'},
+            {text: 'role.menu', link: {name: 'CrudRole'}, icon: 'mdi-shield-account', gallery: true, permission: 'role:manage'},
+            {text: 'userapikey.menu', link: {name: 'CrudUserApiKey'}, icon: 'mdi-table-key', gallery: true, permission: 'userApiKey:manage'},
+            {text: 'usersession.menu', link: {name: 'UserSessionCrudPage'}, icon: 'mdi-history', gallery: true, permission: 'usersession:manage'},
+            {text: 'userloginfail.menu', link: {name: 'UserLoginFailCrudPage'}, icon: 'mdi-alert-circle', gallery: true, permission: 'userloginfail:manage'},
+            {text: 'app.settings', link: {name: 'settings'}, icon: 'mdi-cog', gallery: true, permission: 'SETTINGS_SHOW'}
         ]
     }
 ]
