@@ -2,7 +2,6 @@ import {monitoringEs, monitoringEn} from './monitoring'
 
 export const es = {
     monitoring: monitoringEs,
-    user: {field: {role: 'Rol'}},
     menu: {
         docker: 'Docker',
         monitorization: 'Monitorizacion',
@@ -115,7 +114,6 @@ export const es = {
 
 export const en = {
     monitoring: monitoringEn,
-    user: {field: {role: 'Role'}},
     menu: {
         docker: 'Docker',
         monitorization: 'Monitoring',

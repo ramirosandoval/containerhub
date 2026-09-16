@@ -38,3 +38,19 @@ export function filterNetworks(networks: Network[], filters: NetworkFilters): Ne
         return true
     })
 }
+
+export function networkFiltersFromDrax(draxFilters: any[] | undefined): NetworkFilters {
+    if (!draxFilters) return {}
+    const res: NetworkFilters = {}
+    for (const f of draxFilters) {
+        if (f.name === 'name') res.name = f.value
+        else if (f.name === 'attachable') res.attachable = f.value
+        else if (f.name === 'driver') res.driver = f.value
+        else if (f.name === 'created' && Array.isArray(f.value)) {
+            res.since = f.value[0]
+            res.until = f.value[1]
+        }
+        else if (f.name === 'subnet') res.subnet = f.value
+    }
+    return res
+}
