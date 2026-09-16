@@ -43,7 +43,14 @@ export function resolveContainerHubBootstrapUser(environment: NodeJS.ProcessEnv 
 }
 
 async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
-    const identityPermissions = ['user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage']
+    const identityPermissions = [
+        'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
+        'role:manage', 'role:view', 'role:create', 'role:update', 'role:delete', 'role:permissions',
+        'userApiKey:manage', 'userApiKey:view', 'userApiKey:create', 'userApiKey:update', 'userApiKey:delete',
+        'userloginfail:manage', 'userloginfail:view', 'userloginfail:create', 'userloginfail:update', 'userloginfail:delete',
+        'usersession:manage', 'usersession:view', 'usersession:create', 'usersession:update', 'usersession:delete',
+        'tenant:manage', 'tenant:view', 'tenant:create', 'tenant:update', 'tenant:delete'
+    ]
     await CreateOrUpdateRole({
         name: 'Admin',
         permissions: [...dockerPermissions, ...identityPermissions],
@@ -52,9 +59,10 @@ async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
     })
     const serviceAccess = [DockerPermissions.View, DockerPermissions.Remove, DockerPermissions.Logs, DockerPermissions.Terminal]
     const serviceManagement = [...serviceAccess, DockerPermissions.Restart, DockerPermissions.Create, DockerPermissions.Update]
+    const monitoringManagement = [DockerPermissions.MonitoringCreate, DockerPermissions.MonitoringPause, DockerPermissions.MonitoringDelete]
     const settingsPermissions = ['SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE']
     const rolePermissions = {
-        Sudo: [...serviceManagement, ...settingsPermissions],
+        Sudo: [...serviceManagement, DockerPermissions.NodesFetch, DockerPermissions.NetworkView, ...monitoringManagement, ...settingsPermissions, ...identityPermissions.filter(permission => permission.startsWith('user:') || permission.startsWith('role:') || permission.startsWith('userApiKey:') || permission.startsWith('userloginfail:') || permission.startsWith('usersession:') || permission.startsWith('tenant:'))],
         Implementaciones: serviceManagement,
         Infraestructura: serviceAccess,
         Desarrollo: serviceManagement,
@@ -132,7 +140,16 @@ export default async function SetupContainerHub() {
     validateContainerHubEnvironment()
     LoadCommonConfigFromEnv()
     LoadIdentityConfigFromEnv()
-    LoadPermissions([...dockerPermissions, 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage', 'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'])
+    LoadPermissions([
+        ...dockerPermissions,
+        'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
+        'role:manage', 'role:view', 'role:create', 'role:update', 'role:delete', 'role:permissions',
+        'userApiKey:manage', 'userApiKey:view', 'userApiKey:create', 'userApiKey:update', 'userApiKey:delete',
+        'userloginfail:manage', 'userloginfail:view', 'userloginfail:create', 'userloginfail:update', 'userloginfail:delete',
+        'usersession:manage', 'usersession:view', 'usersession:create', 'usersession:update', 'usersession:delete',
+        'tenant:manage', 'tenant:view', 'tenant:create', 'tenant:update', 'tenant:delete',
+        'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'
+    ])
 
     if (DraxConfig.getOrLoad(CommonConfig.DbEngine) === COMMON.DB_ENGINES.MONGODB) {
         console.log('Connecting to MongoDB...')
