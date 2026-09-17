@@ -24,7 +24,7 @@
             </template>
         </v-navigation-drawer>
 
-        <v-app-bar color="primary" elevation="1" position="fixed">
+        <v-app-bar v-if="authStore.authUser" color="primary" elevation="1" position="fixed">
             <v-app-bar-nav-icon v-if="authStore.authUser" :aria-label="t('app.openMenu')" @click="drawer = !drawer"/>
             <v-app-bar-title style="cursor: pointer" @click="router.push({name: 'home'})">ContainerHub</v-app-bar-title>
             <v-spacer/>
@@ -66,6 +66,16 @@ const currentIcon = computed(() => {
 </script>
 
 <style>
+:root {
+    --app-section-gutter: 16px;
+}
+.v-main > .v-container {
+    max-width: 100%;
+    padding: var(--app-section-gutter) !important;
+}
+.v-main > .v-container.crud {
+    margin-top: 0 !important;
+}
 .v-main .v-card {
     background-color: rgba(var(--v-theme-surface), 0.85) !important;
     backdrop-filter: blur(8px);
