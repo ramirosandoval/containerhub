@@ -14,10 +14,19 @@ const readPermission = 'DOCKER_VIEW'
 const createPermission = 'DOCKER_MONITORING_CREATE'
 const pausePermission = 'DOCKER_MONITORING_PAUSE'
 const deletePermission = 'DOCKER_MONITORING_DELETE'
+const monitoringFiltersSchema = z.preprocess(value => {
+    if (value === undefined || value === '') return []
+    if (typeof value !== 'string') return value
+    try { return JSON.parse(value) } catch { return value }
+}, z.array(z.object({
+    field: z.enum(['serviceName', 'status', 'type', 'collectionType']),
+    operator: z.enum(['eq', 'like']),
+    value: z.union([z.string(), z.number(), z.boolean()])
+}).strict()))
 const querySchema = z.object({
     page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(10),
     orderBy: z.enum(['', 'serviceName', 'status', 'collectionInterval', 'createdAt']).default('serviceName'),
-    order: z.enum(['asc', 'desc']).default('asc'), search: z.string().default(''), filters: z.literal('').optional()
+    order: z.enum(['asc', 'desc']).default('asc'), search: z.string().default(''), filters: monitoringFiltersSchema.optional().default([])
 }).strict()
 const idSchema = z.object({id: z.string().min(1)}).strict()
 const sampleQuerySchema = z.object({since: z.coerce.date().optional(), until: z.coerce.date().optional(), limit: z.coerce.number().int().min(1).max(1_000).default(500)}).strict()
@@ -45,7 +54,7 @@ export async function MonitoringRoutes(fastify: FastifyInstance, options: {
     const metadata = {tags: ['Monitoring'], security: [{bearerAuth: []}]}
     fastify.get(basePath, {schema: {...metadata, summary: 'List stored monitoring configurations'}}, authorized(readPermission, async request => {
         const query = querySchema.parse(request.query)
-        return service.paginate({...query, orderBy: query.orderBy || 'serviceName', filters: []})
+        return service.paginate({...query, orderBy: query.orderBy || 'serviceName'})
     }))
     fastify.get(`${basePath}/statuses`, {schema: metadata}, authorized(readPermission, async request => {
         const {serviceIds} = z.object({serviceIds: z.string().min(1)}).strict().parse(request.query)

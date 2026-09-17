@@ -3,17 +3,25 @@
         <v-card>
             <v-toolbar>
                 <v-toolbar-title>{{ t('monitoring.title') }}</v-toolbar-title>
+                <v-spacer/>
                 <v-btn v-if="auth.hasPermission('DOCKER_MONITORING_CREATE')" prepend-icon="mdi-plus" @click="openCreate">{{ t('monitoring.create') }}</v-btn>
-                <v-btn icon="mdi-refresh" :aria-label="t('monitoring.refresh')" :loading="loading" @click="doPaginate"/>
+                <crud-filter-button v-if="MonitoringCrud.instance.dynamicFiltersEnable" :entity="MonitoringCrud.instance"/>
+                <crud-columns-button v-if="MonitoringCrud.instance.isColumnSelectable" :entity="MonitoringCrud.instance"/>
+                <crud-saved-queries-button v-if="MonitoringCrud.instance.isSavedQueriesEnabled" :entity="MonitoringCrud.instance" />
+                <crud-refresh-button v-if="MonitoringCrud.instance.isRefreshable !== false" @click="doPaginate"/>
             </v-toolbar>
             <v-card-text>
                 <v-alert type="info" variant="tonal" class="mb-4">{{ t('monitoring.notice') }}</v-alert>
                 <v-alert v-if="error || paginationError" type="error" class="mb-4">{{ error || paginationError }}</v-alert>
                 <v-alert v-if="feedback" type="success" class="mb-4" closable @click:close="feedback = ''">{{ feedback }}</v-alert>
-                <v-text-field v-model="search" :label="t('monitoring.search')" clearable @change="searchConfigurations"/>
+                <crud-search v-if="MonitoringCrud.instance.searchEnable" v-model="search" />
+                <v-card v-if="isDynamicFiltersEnable" id="crud-list-table-default-filters" class="crud-list-table__default-filters mt-4" variant="flat">
+                    <crud-filters v-if="MonitoringCrud.instance.filtersEnable" v-model="filters" :auto-filter="false" :entity="MonitoringCrud.instance"/>
+                    <crud-filters-action :entity="MonitoringCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
+                </v-card>
             </v-card-text>
             <v-data-table-server v-model:page="page" v-model:items-per-page="itemsPerPage" v-model:sort-by="sortBy"
-                :headers="headers" :items="configurations" :items-length="totalItems" :loading="loading" :items-per-page-options="[5, 10, 25, 50, 100]" @update:options="doPaginate">
+                :headers="filteredHeaders" :items="configurations" :items-length="totalItems" :loading="loading" :items-per-page-options="[5, 10, 25, 50, 100]" @update:options="doPaginate">
                 <template #item.status="{item}"><v-chip :color="item.status === 'paused' ? 'warning' : 'primary'">{{ t(`monitoring.${item.status}`) }}</v-chip></template>
                 <template #item.period="{item}">{{ item.type === 'calendar' ? `${item.since} — ${item.until}` : `${item.holdingTime} ${t('monitoring.days')}` }}</template>
                 <template #item.actions="{item}">
@@ -63,7 +71,10 @@
 import {computed, reactive, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useAuthStore} from '@drax/identity-vue'
-import {useCrud} from '@drax/crud-vue'
+import {useCrud, CrudFilters, CrudFiltersAction, CrudSearch, CrudSavedQueriesButton, CrudRefreshButton} from '@drax/crud-vue'
+import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterButton.vue'
+import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
+import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
 import {useRouter} from 'vue-router'
 import MonitoringCrud, {monitoringProvider, type MonitoringConfiguration} from '@/cruds/MonitoringCrud'
 import type {Service} from '@/cruds/ServiceCrud'
@@ -72,7 +83,8 @@ import {restGet} from '@/rest'
 const {t} = useI18n()
 const auth = useAuthStore()
 const router = useRouter()
-const {items, totalItems, loading, page, itemsPerPage, sortBy, search, paginationError, doPaginate} = useCrud(MonitoringCrud.instance)
+const {items, totalItems, loading, page, itemsPerPage, sortBy, search, paginationError, doPaginate, prepareFilters, isDynamicFiltersEnable, filters, applyFilters, clearFilters} = useCrud(MonitoringCrud.instance)
+const {filteredHeaders} = useCrudColumns(MonitoringCrud.instance)
 const configurations = computed(() => items.value as MonitoringConfiguration[])
 const error = ref('')
 const feedback = ref('')
@@ -92,10 +104,7 @@ const today = localDate(new Date())
 const defaultUntil = new Date()
 defaultUntil.setDate(defaultUntil.getDate() + 30)
 const form = reactive({type: 'calendar' as 'calendar' | 'permanent', collectionInterval: '15s', collectionType: 'replic' as 'replic' | 'global', since: today, until: localDate(defaultUntil), holdingTime: 30})
-const headers = computed(() => [
-    {title: t('monitoring.status'), key: 'status'}, {title: t('monitoring.service'), key: 'serviceName'},
-    {title: t('monitoring.interval'), key: 'collectionInterval'}, {title: t('monitoring.period'), key: 'period', sortable: false}, {title: t('monitoring.actions'), key: 'actions', sortable: false}
-])
+prepareFilters()
 const serviceHeaders = computed(() => [{title: t('monitoring.service'), key: 'name'}, {title: t('monitoring.stack'), key: 'stack'}, {title: t('monitoring.status'), key: 'status', sortable: false}])
 const stacks = computed(() => [...new Set(services.value.flatMap(service => service.stack ? [service.stack] : []))].sort())
 const filteredServices = computed(() => services.value.filter(service => (!stackFilter.value || service.stack === stackFilter.value) && service.name.toLowerCase().includes((serviceSearch.value || '').toLowerCase())))

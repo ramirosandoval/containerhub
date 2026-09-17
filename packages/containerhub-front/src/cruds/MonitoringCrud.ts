@@ -1,7 +1,7 @@
 import {EntityCrud} from '@drax/crud-vue'
 import {HttpRestClientFactory} from '@drax/common-front'
 import {useAuthStore} from '@drax/identity-vue'
-import type {IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
+import type {IEntityCrud, IDraxCrudProvider, IDraxFieldFilter, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {restGet, restPost} from '@/rest'
 import {authorizationHeader} from '@/restHeaders'
 
@@ -18,7 +18,15 @@ export type MonitoringCreate = {
 const basePath = '/api/monitoring-configurations'
 export const monitoringProvider = new class implements IDraxCrudProvider<MonitoringConfiguration, never, never> {
     paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<MonitoringConfiguration>> {
-        return restGet(basePath, {page: options.page, limit: options.limit, orderBy: options.orderBy || 'serviceName', order: options.order || 'asc', search: options.search || ''})
+        const filters: IDraxFieldFilter[] = (options.filters ?? []).filter(filter => filter.field)
+        return restGet(basePath, {
+            page: options.page,
+            limit: options.limit,
+            orderBy: options.orderBy || 'serviceName',
+            order: options.order || 'asc',
+            search: options.search || '',
+            filters: filters.length ? JSON.stringify(filters) : ''
+        })
     }
     createForServices(configuration: MonitoringCreate): Promise<{created: MonitoringConfiguration[]; skipped: string[]}> { return restPost(basePath, configuration) }
     setStatus(id: string, action: 'pause' | 'resume'): Promise<MonitoringConfiguration> { return restPost(`${basePath}/${encodeURIComponent(id)}/${action}`, {}) }
@@ -35,5 +43,37 @@ class MonitoringCrud extends EntityCrud {
     override name = 'monitoring'
     override get provider() { return monitoringProvider }
     override get identifier(): string { return '_id' }
+    override get headers(): IEntityCrud['headers'] {
+        return [
+            {title: 'status', key: 'status'},
+            {title: 'service', key: 'serviceName'},
+            {title: 'interval', key: 'collectionInterval'},
+            {title: 'period', key: 'period', sortable: false}
+        ]
+    }
+    override get actionHeaders(): IEntityCrud['actionHeaders'] {
+        return [{title: 'monitoring.actions', key: 'actions', sortable: false}]
+    }
+    override get filters(): IEntityCrud['filters'] {
+        return [
+            {name: 'serviceName', type: 'string', label: 'service', default: null, operator: 'like'},
+            {name: 'status', type: 'enum', label: 'status', default: null, operator: 'eq', enum: ['monitoring', 'paused']},
+            {name: 'type', type: 'enum', label: 'type', default: null, operator: 'eq', enum: ['calendar', 'permanent']},
+            {name: 'collectionType', type: 'enum', label: 'collectionType', default: null, operator: 'eq', enum: ['replic', 'global']}
+        ]
+    }
+    override get isCreatable(): boolean { return false }
+    override get isEditable(): boolean { return false }
+    override get isViewable(): boolean { return false }
+    override get isDeletable(): boolean { return false }
+    override get isExportable(): boolean { return false }
+    override get isImportable(): boolean { return false }
+    override get isRefreshable(): boolean { return true }
+    override get isColumnSelectable(): boolean { return true }
+    override get isGroupable(): boolean { return false }
+    override get isSavedQueriesEnabled(): boolean { return false }
+    override get searchEnable(): boolean { return true }
+    override get filtersEnable(): boolean { return true }
+    override get dynamicFiltersEnable(): boolean { return true }
 }
 export default MonitoringCrud
