@@ -8,16 +8,16 @@ import WebSocket from 'ws'
 const MAX_INPUT_BYTES = 64 * 1024
 const MAX_BUFFERED_BYTES = 1024 * 1024
 
-type TerminalOptions = {docker: Pick<Docker, 'getContainer'>; nodeId: string}
+type TerminalOptions = {docker: Pick<Docker, 'getContainer'>; nodeId: string; secure: boolean}
 type TerminalTarget = {containerId: string; nodeId: string; taskId: string; shell: 'sh' | 'bash'}
 
-export const terminalRoutes: FastifyPluginAsync<TerminalOptions> = async (server, {docker, nodeId}) => {
+export const terminalRoutes: FastifyPluginAsync<TerminalOptions> = async (server, {docker, nodeId, secure}) => {
     await server.register(websocket, {options: {maxPayload: MAX_INPUT_BYTES, perMessageDeflate: false}})
     server.get<{Params: {containerId: string}; Querystring: Omit<TerminalTarget, 'containerId'>}>('/containers/:containerId/terminal', {
         websocket: true,
         preValidation: async (request, reply) => {
             const connection = request.raw.socket
-            if (!(connection instanceof TLSSocket) || !connection.authorized) return reply.code(401).send({error: 'mTLS required'})
+            if (secure && (!(connection instanceof TLSSocket) || !connection.authorized)) return reply.code(401).send({error: 'mTLS required'})
             const target = request.query
             if (target.nodeId !== nodeId || !/^[a-zA-Z0-9_-]{1,128}$/.test(target.taskId ?? '') ||
                 !/^[a-f0-9]{64}$/.test(request.params.containerId) || (target.shell !== 'sh' && target.shell !== 'bash')) {

@@ -46,10 +46,22 @@ test('agent health reports the Docker daemon assigned to this node', async () =>
     }
 })
 
-test('agent startup requires its mTLS identity files', () => {
+test('agent startup supports the deployed plaintext transport and rejects partial mTLS', () => {
+    assert.deepEqual(readAgentServerConfig({
+        CONTAINERHUB_AGENT_PORT: '9997',
+        NODE_ID: 'worker-1'
+    }), {
+        port: 9997,
+        nodeId: 'worker-1',
+        dockerDataPath: '/var/lib/containerhub'
+    })
     assert.throws(
-        () => readAgentServerConfig({CONTAINERHUB_AGENT_PORT: '9997'}),
-        /CONTAINERHUB_AGENT_CA_FILE/
+        () => readAgentServerConfig({
+            CONTAINERHUB_AGENT_PORT: '9997',
+            NODE_ID: 'worker-1',
+            CONTAINERHUB_AGENT_CA_FILE: '/ca.pem'
+        }),
+        /CONTAINERHUB_AGENT_SERVER_CERT_FILE/
     )
 })
 

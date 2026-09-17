@@ -13,10 +13,10 @@ export function openAgentTerminalConnection(
     const host = isIP(nodeAddress) === 6 ? `[${nodeAddress}]` : nodeAddress
     const query = new URLSearchParams({nodeId, taskId, shell})
     const connectionOptions: WebSocket.ClientOptions & import('node:tls').ConnectionOptions = {
-        ca: config.ca, cert: config.cert, key: config.key, servername: config.serverName,
         rejectUnauthorized: true, handshakeTimeout: 5000, maxPayload: 1024 * 1024, perMessageDeflate: false
     }
-    const socket = new WebSocket(`wss://${host}:${config.port}/containers/${encodeURIComponent(containerId)}/terminal?${query}`, connectionOptions)
+    if (config.secure) Object.assign(connectionOptions, {ca: config.ca, cert: config.cert, key: config.key, servername: config.serverName})
+    const socket = new WebSocket(`${config.secure ? 'wss' : 'ws'}://${host}:${config.port}/containers/${encodeURIComponent(containerId)}/terminal?${query}`, connectionOptions)
     return new Promise((resolve, reject) => {
         let ready = false
         const stream = new Duplex({

@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs'
+import {request as httpRequest} from 'node:http'
 import {request as httpsRequest} from 'node:https'
 import {resolve4} from 'node:dns/promises'
 import {z} from 'zod'
@@ -18,10 +19,11 @@ const agentContainersSchema = z.object({
 type AgentClientConfig = {
     host: string
     port: number
-    serverName: string
-    ca: Buffer | string
-    cert: Buffer | string
-    key: Buffer | string
+    secure: boolean
+    serverName?: string
+    ca?: Buffer | string
+    cert?: Buffer | string
+    key?: Buffer | string
 }
 
 export function readAgentClientConfig(environment: AgentClientEnvironment): AgentClientConfig | undefined {
@@ -30,13 +32,15 @@ export function readAgentClientConfig(environment: AgentClientEnvironment): Agen
         'CONTAINERHUB_AGENT_CLIENT_CERT_FILE',
         'CONTAINERHUB_AGENT_CLIENT_KEY_FILE'
     ] as const
-    if (fileVariables.every((variable) => !environment[variable]?.trim())) return undefined
-    for (const variable of fileVariables) if (!environment[variable]?.trim()) throw new Error(`${variable} is required when agent health is enabled`)
     const port = Number(environment.CONTAINERHUB_AGENT_PORT ?? 9997)
     if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('CONTAINERHUB_AGENT_PORT must be a valid TCP port')
+    const host = environment.CONTAINERHUB_AGENT_HOST?.trim() || 'containerhub-agent'
+    if (fileVariables.every((variable) => !environment[variable]?.trim())) return {host, port, secure: false}
+    for (const variable of fileVariables) if (!environment[variable]?.trim()) throw new Error(`${variable} is required when agent mTLS is configured`)
     return {
-        host: environment.CONTAINERHUB_AGENT_HOST?.trim() || 'containerhub-agent',
+        host,
         port,
+        secure: true,
         serverName: environment.CONTAINERHUB_AGENT_SERVER_NAME?.trim() || 'containerhub-agent',
         ca: readFileSync(environment.CONTAINERHUB_AGENT_CA_FILE!),
         cert: readFileSync(environment.CONTAINERHUB_AGENT_CLIENT_CERT_FILE!),
@@ -46,15 +50,12 @@ export function readAgentClientConfig(environment: AgentClientEnvironment): Agen
 
 function requestAgent(config: AgentClientConfig, nodeAddress: string, requestPath: string, timeoutMs = 2_000, method = 'GET', body?: any): Promise<AgentResponse> {
     return new Promise((resolve, reject) => {
-        const request = httpsRequest({
+        const request = (config.secure ? httpsRequest : httpRequest)({
             host: nodeAddress,
             port: config.port,
             path: requestPath,
             method,
-            servername: config.serverName,
-            ca: config.ca,
-            cert: config.cert,
-            key: config.key,
+            ...(config.secure ? {servername: config.serverName, ca: config.ca, cert: config.cert, key: config.key} : {}),
             signal: AbortSignal.timeout(timeoutMs),
             timeout: timeoutMs,
             headers: body ? {'Content-Type': 'application/json'} : undefined

@@ -37,10 +37,10 @@ test('real mTLS WSS terminal preserves binary, validates target/resize and clean
         }
     }} as unknown as Pick<Docker, 'getContainer'>
     const server = Fastify({https: {ca: cert, cert, key, requestCert: true, rejectUnauthorized: true}})
-    await server.register(terminalRoutes, {docker, nodeId: 'worker-1'})
+    await server.register(terminalRoutes, {docker, nodeId: 'worker-1', secure: true})
     await server.listen({host: '127.0.0.1', port: 0})
     const port = (server.server.address() as {port: number}).port
-    const config = {host: 'containerhub-agent', ca: cert, cert, key, serverName: 'containerhub-agent', port}
+    const config = {host: 'containerhub-agent', ca: cert, cert, key, serverName: 'containerhub-agent', port, secure: true}
     const url = `wss://127.0.0.1:${port}/containers/${containerId}/terminal?nodeId=worker-1&taskId=task-1&shell=sh`
     const sockets: WebSocket[] = []
     try {
@@ -100,11 +100,30 @@ test('real mTLS WSS terminal preserves binary, validates target/resize and clean
     }
 })
 
-test('terminal refuses plaintext even when agent server is used without TLS', async () => {
+test('terminal uses the deployed plaintext WebSocket transport', async () => {
+    const streams: Duplex[] = []
+    const docker = {getContainer() {
+        return {
+            inspect: async () => ({State: {Running: true}, Config: {Labels: {'com.docker.swarm.task.id': 'task-1', 'com.docker.swarm.node.id': 'worker-1'}}}),
+            exec: async () => {
+                const stream = new Duplex({read() {}, write(chunk, _encoding, callback) { this.push(chunk); callback() }})
+                streams.push(stream)
+                return {start: async () => stream, resize: async () => undefined}
+            }
+        }
+    }} as unknown as Pick<Docker, 'getContainer'>
     const server = Fastify()
-    await server.register(terminalRoutes, {docker: {} as Pick<Docker, 'getContainer'>, nodeId: 'worker-1'})
+    await server.register(terminalRoutes, {docker, nodeId: 'worker-1', secure: false})
+    await server.listen({host: '127.0.0.1', port: 0})
     try {
-        const response = await server.inject({url: `/containers/${containerId}/terminal?nodeId=worker-1&taskId=task-1&shell=sh`})
-        assert.equal(response.statusCode, 401)
-    } finally { await server.close() }
+        const port = (server.server.address() as {port: number}).port
+        const terminal = await openAgentTerminalConnection({host: 'containerhub-agent', port, secure: false}, '127.0.0.1', 'worker-1', containerId, 'task-1', 'sh')
+        const output = once(terminal.stream, 'data')
+        terminal.stream.write(Buffer.from('echo works\r'))
+        assert.equal((await output)[0].toString(), 'echo works\r')
+        terminal.close()
+    } finally {
+        streams.forEach((stream) => stream.destroy())
+        await server.close()
+    }
 })

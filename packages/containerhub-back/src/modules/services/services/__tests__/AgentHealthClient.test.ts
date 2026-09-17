@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {AgentHealthClient, readAgentClientConfig} from '../AgentHealthClient.js'
 
-const agentConfig = {host: 'containerhub-agent', port: 9997, serverName: 'containerhub-agent', ca: 'ca', cert: 'cert', key: 'key'}
+const agentConfig = {host: 'containerhub-agent', port: 9997, secure: true, serverName: 'containerhub-agent', ca: 'ca', cert: 'cert', key: 'key'}
 const resolveAgentAddress = async () => ['10.0.0.8']
 
 test('agent client resolves the requested node through Swarm DNSRR before using it', async () => {
@@ -79,8 +79,15 @@ test('agent client rejects a response belonging to another node', async () => {
     assert.equal(await client.isHealthy('worker-1'), false)
 })
 
-test('agent client stays disabled unless every mTLS file is configured', () => {
-    assert.equal(readAgentClientConfig({}), undefined)
+test('agent client defaults to the deployed plaintext transport and rejects partial mTLS', () => {
+    assert.deepEqual(readAgentClientConfig({
+        CONTAINERHUB_AGENT_HOST: 'containerhub-agent',
+        CONTAINERHUB_AGENT_PORT: '9997'
+    }), {
+        host: 'containerhub-agent',
+        port: 9997,
+        secure: false
+    })
     assert.throws(
         () => readAgentClientConfig({CONTAINERHUB_AGENT_CA_FILE: '/ca.pem'}),
         /CONTAINERHUB_AGENT_CLIENT_CERT_FILE/

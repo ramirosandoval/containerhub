@@ -15,28 +15,31 @@ type AgentServerOptions = {
 }
 
 export function readAgentServerConfig(environment: AgentEnvironment) {
-    const requiredVariables = [
+    const fileVariables = [
         'CONTAINERHUB_AGENT_CA_FILE',
         'CONTAINERHUB_AGENT_SERVER_CERT_FILE',
-        'CONTAINERHUB_AGENT_SERVER_KEY_FILE',
-        'NODE_ID'
+        'CONTAINERHUB_AGENT_SERVER_KEY_FILE'
     ] as const
-    for (const variable of requiredVariables) if (!environment[variable]?.trim()) throw new Error(`${variable} is required`)
+    if (!environment.NODE_ID?.trim()) throw new Error('NODE_ID is required')
+    const secure = fileVariables.some((variable) => environment[variable]?.trim())
+    if (secure) for (const variable of fileVariables) if (!environment[variable]?.trim()) throw new Error(`${variable} is required when agent mTLS is configured`)
     const port = Number(environment.CONTAINERHUB_AGENT_PORT ?? 9997)
     if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('CONTAINERHUB_AGENT_PORT must be a valid TCP port')
     return {
         port,
         nodeId: environment.NODE_ID!,
-        caFile: environment.CONTAINERHUB_AGENT_CA_FILE!,
-        certificateFile: environment.CONTAINERHUB_AGENT_SERVER_CERT_FILE!,
-        keyFile: environment.CONTAINERHUB_AGENT_SERVER_KEY_FILE!,
+        ...(secure ? {
+            caFile: environment.CONTAINERHUB_AGENT_CA_FILE!,
+            certificateFile: environment.CONTAINERHUB_AGENT_SERVER_CERT_FILE!,
+            keyFile: environment.CONTAINERHUB_AGENT_SERVER_KEY_FILE!
+        } : {}),
         dockerDataPath: environment.DOCKER_DATA_PATH?.trim() || '/var/lib/containerhub'
     }
 }
 
 export function buildAgentServer({docker, nodeId, https}: AgentServerOptions) {
     const server = (https ? Fastify({https}) : Fastify()) as FastifyInstance
-    server.register(terminalRoutes, {docker, nodeId})
+    server.register(terminalRoutes, {docker, nodeId, secure: Boolean(https)})
     server.get('/health', async () => {
         await docker.ping()
         return {ok: true, nodeId}
@@ -88,15 +91,17 @@ export function buildAgentServer({docker, nodeId, https}: AgentServerOptions) {
 
 export async function startAgent(environment: AgentEnvironment = process.env): Promise<void> {
     const config = readAgentServerConfig(environment)
-    const [ca, cert, key] = await Promise.all([
-        readFile(config.caFile),
-        readFile(config.certificateFile),
-        readFile(config.keyFile)
-    ])
+    let https: AgentServerOptions['https']
+    if (config.caFile && config.certificateFile && config.keyFile) {
+        const [ca, cert, key] = await Promise.all([
+            readFile(config.caFile), readFile(config.certificateFile), readFile(config.keyFile)
+        ])
+        https = {ca, cert, key, requestCert: true, rejectUnauthorized: true}
+    }
     const server = buildAgentServer({
         docker: new Docker({socketPath: environment.DOCKER_SOCKET_PATH ?? '/var/run/docker.sock'}),
         nodeId: config.nodeId,
-        https: {ca, cert, key, requestCert: true, rejectUnauthorized: true}
+        https
     });
     (server as any).dockerDataPath = config.dockerDataPath;
     await server.listen({host: '0.0.0.0', port: config.port})
