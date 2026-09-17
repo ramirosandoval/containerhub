@@ -14,16 +14,16 @@ export class SettingsSqliteRepository extends AbstractSqliteRepository<ISettings
     ]
 
     async getSettings(): Promise<ISettings> {
-        const settings = await this.findBy('id', '1')
-        if (!settings || settings.length === 0) {
+        const settings = await this.findById('1')
+        if (!settings) {
             return await this.create({
-                id: '1',
+                _id: '1',
                 maxLogsLines: 10000,
                 maxMonitoredTasksQuantity: 1000,
                 monitorizationTasksInterval: 60
             } as any)
         }
-        return settings[0]
+        return settings
     }
 
     async updateSettings(updates: Partial<ISettings>): Promise<ISettings> {

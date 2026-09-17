@@ -29,10 +29,10 @@ export class TaskMonitorizationSqliteRepository extends AbstractSqliteRepository
     }
 
     async createDoc(data: ITaskMonitorization): Promise<ITaskMonitorization> {
-        const id = crypto.randomUUID()
+        const _id = crypto.randomUUID()
         const toSave = {
             ...data,
-            id,
+            _id,
             date: data.date instanceof Date ? data.date.toISOString() : data.date
         }
         await this.create(toSave as any)
@@ -43,8 +43,8 @@ export class TaskMonitorizationSqliteRepository extends AbstractSqliteRepository
         if (maxQuantity < 1) return
         this.db.prepare(`
             DELETE FROM ${this.tableName} 
-            WHERE id NOT IN (
-                SELECT id FROM ${this.tableName} 
+            WHERE _id NOT IN (
+                SELECT _id FROM ${this.tableName}
                 ORDER BY date DESC 
                 LIMIT ?
             )
