@@ -1,9 +1,10 @@
 import {EntityCrud} from '@drax/crud-vue'
 import {HttpRestClientFactory} from '@drax/common-front'
 import {useAuthStore} from '@drax/identity-vue'
-import type {IEntityCrud, IDraxCrudProvider, IDraxFieldFilter, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
+import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {restGet, restPost} from '@/rest'
 import {authorizationHeader} from '@/restHeaders'
+import {activeMonitoringFilters} from './MonitoringFilters'
 
 export type MonitoringConfiguration = {
     _id: string; serviceId: string; serviceName: string; serviceStack: string | null
@@ -18,7 +19,7 @@ export type MonitoringCreate = {
 const basePath = '/api/monitoring-configurations'
 export const monitoringProvider = new class implements IDraxCrudProvider<MonitoringConfiguration, never, never> {
     paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<MonitoringConfiguration>> {
-        const filters: IDraxFieldFilter[] = (options.filters ?? []).filter(filter => filter.field)
+        const filters = activeMonitoringFilters(options.filters ?? [])
         return restGet(basePath, {
             page: options.page,
             limit: options.limit,

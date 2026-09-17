@@ -49,6 +49,10 @@ test('network page uses the Drax filter and column controls', async () => {
     ])
 
     assert.match(page, /auto-crud-filters/)
+    assert.match(page, /#filter\.attachable/)
+    assert.match(page, /<v-select/)
+    assert.match(page, /attachableOptions/)
+    assert.match(page, /setAttachableFilter/)
     assert.doesNotMatch(page, /crud-filters-action/)
     assert.doesNotMatch(page, /<v-card-text[^>]+id="crud-list-table-filters-section"/)
     assert.match(crud, /isColumnSelectable[^\n]*true/)
