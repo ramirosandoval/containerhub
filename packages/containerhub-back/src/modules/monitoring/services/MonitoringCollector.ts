@@ -7,6 +7,7 @@ export type ServiceStatistics = Array<{task: {id: string; nodeId?: string; state
 
 export class MonitoringCollector {
     private timer?: ReturnType<typeof setInterval>
+    private scheduledCollection?: Promise<unknown>
     private collecting = false
     private readonly nextCollection = new Map<string, number>()
 
@@ -26,7 +27,7 @@ export class MonitoringCollector {
                 if (!this.isDue(configuration, now)) continue
                 this.nextCollection.set(configuration._id, now.getTime() + Number.parseInt(configuration.collectionInterval) * 1_000)
                 try {
-                    const statistics = (await this.fetchStatistics(configuration.serviceId)).filter(entry => entry.task.id && entry.metrics && entry.task.state === 'running')
+                    const statistics = (await this.fetchConfigurationStatistics(configuration)).filter(entry => entry.task.id && entry.metrics && entry.task.state === 'running')
                     const selected = configuration.collectionType === 'replic' ? statistics.slice(0, 1) : statistics
                     for (const {task, metrics} of selected) {
                         if (!metrics) continue
@@ -34,10 +35,16 @@ export class MonitoringCollector {
                         recorded++
                     }
                     await this.samples.prune(configuration, now)
-                } catch {
+                } catch (error) {
                     failures.push(configuration.serviceId)
+                    console.error('Monitoring collection failed', {
+                        serviceId: configuration.serviceId,
+                        serviceName: configuration.serviceName,
+                        error: error instanceof Error ? error.message : 'Unknown error'
+                    })
                 }
             }
+            if (recorded || failures.length) console.info('Monitoring collection completed', {recorded, failures: failures.length})
             return {recorded, failures}
         } finally {
             this.collecting = false
@@ -47,14 +54,38 @@ export class MonitoringCollector {
     start(): void {
         if (this.timer) return
         // ponytail: one in-process scheduler; add a distributed lease only if the backend is deployed with multiple replicas.
-        void this.collect()
-        this.timer = setInterval(() => void this.collect(), 1_000)
+        this.collectScheduled()
+        this.timer = setInterval(() => this.collectScheduled(), 1_000)
         this.timer.unref?.()
     }
 
-    stop(): void {
+    async stop(): Promise<void> {
         if (this.timer) clearInterval(this.timer)
         this.timer = undefined
+        await this.scheduledCollection
+    }
+
+    private collectScheduled(): void {
+        if (this.collecting) return
+        const collection = this.collect()
+        this.scheduledCollection = collection
+        void collection.then(
+            () => {
+                if (this.scheduledCollection === collection) this.scheduledCollection = undefined
+            },
+            () => {
+                if (this.scheduledCollection === collection) this.scheduledCollection = undefined
+            }
+        )
+    }
+
+    private async fetchConfigurationStatistics(configuration: IMonitoring): Promise<ServiceStatistics> {
+        try {
+            return await this.fetchStatistics(configuration.serviceId)
+        } catch (error) {
+            if (!(error instanceof Error) || error.message !== 'Service not found' || configuration.serviceName === configuration.serviceId) throw error
+            return await this.fetchStatistics(configuration.serviceName)
+        }
     }
 
     private isDue(configuration: IMonitoring, now: Date): boolean {

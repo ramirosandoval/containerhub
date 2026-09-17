@@ -129,10 +129,10 @@ Current repository verification (2026-09-14, Node 22): full Bash backend discove
 
 Evidence:
 
-1. Runtime, `.env.example`, README and Playwright backend startup use the current Drax names: `DRAX_DB_ENGINE`, its engine-specific DB value, `DRAX_JWT_SECRET` and `DRAX_PORT`.
-2. Startup validation rejects a missing/unsupported DB engine, a missing Mongo URI or SQLite file, and a missing/blank JWT secret before connection or bootstrap work.
-3. Focused tests cover valid MongoDB/SQLite contracts and every mandatory-value failure; compiled-process checks confirm missing DB/JWT configuration exits nonzero.
-4. `DRAX_JWT_SECRET` has no source-controlled fallback value.
+1. Runtime, `.env.example`, README and Playwright backend startup use the current Drax names: `DRAX_DB_ENGINE`, its engine-specific DB value, `DRAX_JWT_SECRET`, `DRAX_APIKEY_SECRET` and `DRAX_PORT`.
+2. Startup validation rejects a missing/unsupported DB engine, a missing Mongo URI or SQLite file, and a missing/blank JWT or API-key secret before connection or bootstrap work.
+3. Focused tests cover valid MongoDB/SQLite contracts and every mandatory-value failure; compiled-process checks confirm missing DB/JWT/API-key configuration exits nonzero.
+4. `DRAX_JWT_SECRET` and `DRAX_APIKEY_SECRET` have no source-controlled runtime fallback and must differ in deployment.
 5. `MIGRATION_STATUS.tsv` records CFG-01 as DONE; root bootstrap policy and request validation remain separate CFG-02/CFG-03 slices.
 
 ## Completed vertical slice: LOG-02

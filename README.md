@@ -59,6 +59,7 @@ stored in the stack file.
 
 ```bash
 openssl rand -hex 32 | docker secret create containerhub-test-jwt -
+openssl rand -hex 32 | docker secret create containerhub-test-api-key -
 read -rsp 'ContainerHub test administrator password: ' CONTAINERHUB_TEST_PASSWORD; echo
 printf %s "$CONTAINERHUB_TEST_PASSWORD" | docker secret create containerhub-test-bootstrap-password -
 unset CONTAINERHUB_TEST_PASSWORD
@@ -138,6 +139,7 @@ ContainerHub uses the current Drax environment names directly:
 | `DRAX_MONGO_URI` | when engine is `mongo` | MongoDB connection URI |
 | `DRAX_SQLITE_FILE` | when engine is `sqlite` | SQLite database file |
 | `DRAX_JWT_SECRET` | yes | Secret used by Drax to sign and verify access tokens |
+| `DRAX_APIKEY_SECRET` | yes | Independent secret used by Drax to HMAC-protect user API keys |
 | `DRAX_JWT_EXPIRATION` | no | Access-token lifetime; Drax defaults to `1h` |
 | `DRAX_JWT_ISSUER` | no | Access-token issuer; Drax defaults to `DRAX` |
 | `DRAX_PORT` | no | Backend port; ContainerHub defaults to `9998` |
@@ -150,10 +152,20 @@ ContainerHub uses the current Drax environment names directly:
 | `CONTAINERHUB_BOOTSTRAP_PHONE` | when bootstrap is enabled | Initial user's phone required by the Drax create-user contract |
 
 Startup fails before database connection or bootstrap work when a required
-value is missing. `DRAX_JWT_SECRET` deliberately has no example or runtime
-fallback. The migration/coexistence deployment uses `mongo` and the shared
+value is missing. `DRAX_JWT_SECRET` and `DRAX_APIKEY_SECRET` deliberately have
+no runtime fallback and must differ. The migration/coexistence deployment uses `mongo` and the shared
 `incartainer` database; SQLite remains the alternative engine supported by
 the current Drax identity repositories.
+
+### API authentication
+
+Browser sessions continue to send `Authorization: Bearer <JWT>`. Automation may
+send `X-API-Key: <user API key>` instead; it is not a JWT and is shown only when
+created. Both credentials flow through the same Drax RBAC checks. Deleting an
+API key revokes it after the configured Drax API-key cache TTL (10 seconds by
+Drax default when it is unset). Terminal
+WebSockets continue to use the one-time terminal ticket created by either
+authenticated request.
 
 Initial privileged-user creation is disabled unless
 `CONTAINERHUB_BOOTSTRAP_ENABLED=true`. With that opt-in, all five bootstrap

@@ -16,6 +16,7 @@ test('rejects an invalid initial password without logging the secret', async () 
         DRAX_DB_ENGINE: 'sqlite',
         DRAX_SQLITE_FILE: join(temporaryDirectory, 'identity.sqlite'),
         DRAX_JWT_SECRET: 'test-only-secret',
+        DRAX_APIKEY_SECRET: 'test-only-api-key-secret',
         CONTAINERHUB_BOOTSTRAP_ENABLED: 'true',
         CONTAINERHUB_BOOTSTRAP_NAME: 'Initial Administrator',
         CONTAINERHUB_BOOTSTRAP_USERNAME: 'bootstrap-secret-test',

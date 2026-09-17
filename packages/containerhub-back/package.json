@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "node --env-file=.env --import tsx src/index.ts",
-    "build": "tsc -p tsconfig.json && copyfiles -u 1 ./**/*.graphql dist/ && node -e \"import('./dist/factories/GraphQLSchema.js').then(({resolvers}) => { if (!resolvers.Query?.fetchService || !resolvers.Mutation?.dockerRestart) throw new Error('compiled GraphQL resolvers were not loaded') })\" && node -e \"Object.assign(process.env, {DRAX_DB_ENGINE: 'sqlite', DRAX_SQLITE_FILE: 'smoke.db', DRAX_JWT_SECRET: 'smoke', DRAX_PORT: '0'}); import('./dist/index.js').then(() => { console.log('Smoke test passed'); process.exit(0) }).catch(e => { console.error(e); process.exit(1) })\"",
+    "build": "tsc -p tsconfig.json && copyfiles -u 1 ./**/*.graphql dist/ && node -e \"import('./dist/factories/GraphQLSchema.js').then(({resolvers}) => { if (!resolvers.Query?.fetchService || !resolvers.Mutation?.dockerRestart) throw new Error('compiled GraphQL resolvers were not loaded') })\" && node -e \"Object.assign(process.env, {DRAX_DB_ENGINE: 'sqlite', DRAX_SQLITE_FILE: 'smoke.db', DRAX_JWT_SECRET: 'smoke', DRAX_APIKEY_SECRET: 'smoke-api-key', DRAX_PORT: '0'}); import('./dist/index.js').then(() => { console.log('Smoke test passed'); process.exit(0) }).catch(e => { console.error(e); process.exit(1) })\"",
     "start": "node --env-file=.env dist/index.js"
   },
   "dependencies": {

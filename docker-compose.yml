@@ -1,13 +1,13 @@
 services:
   app:
-    image: 192.168.122.1:5000/containerhub:0.0.2
+    image: ${CONTAINERHUB_IMAGE:-192.168.122.1:5000/containerhub:0.0.2}
     command:
       - sh
       - -eu
       - -c
       - |
         export DRAX_JWT_SECRET="$$(cat /run/secrets/containerhub-test-jwt)"
-        export DRAX_APIKEY_SECRET="$$(cat /run/secrets/containerhub-test-jwt)"
+        export DRAX_APIKEY_SECRET="$$(cat /run/secrets/containerhub-test-api-key)"
         export CONTAINERHUB_BOOTSTRAP_PASSWORD="$$(cat /run/secrets/containerhub-test-bootstrap-password)"
         exec node packages/containerhub-back/dist/index.js
     environment:
@@ -28,6 +28,7 @@ services:
       - containerhub-agent-network
     secrets:
       - containerhub-test-jwt
+      - containerhub-test-api-key
       - containerhub-test-bootstrap-password
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -37,6 +38,40 @@ services:
         published: 9998
         protocol: tcp
         mode: host
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  monitoring:
+    image: ${CONTAINERHUB_IMAGE:-192.168.122.1:5000/containerhub:0.0.2}
+    command:
+      - sh
+      - -eu
+      - -c
+      - |
+        export DRAX_JWT_SECRET="$$(cat /run/secrets/containerhub-test-jwt)"
+        export DRAX_APIKEY_SECRET="$$(cat /run/secrets/containerhub-test-api-key)"
+        exec node packages/containerhub-back/dist/monitoring.js
+    environment:
+      DRAX_DB_ENGINE: sqlite
+      DRAX_SQLITE_FILE: /var/lib/containerhub/containerhub.sqlite
+      CONTAINERHUB_BOOTSTRAP_ENABLED: "false"
+      TERMINAL_ALLOWED_ORIGIN: ${CONTAINERHUB_ORIGIN:-http://localhost:9998}
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      DOCKER_DATA_PATH: /var/lib/containerhub
+      CONTAINERHUB_AGENT_HOST: containerhub-agent
+      CONTAINERHUB_AGENT_PORT: 9997
+    networks:
+      - containerhub-agent-network
+    secrets:
+      - containerhub-test-jwt
+      - containerhub-test-api-key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - containerhub-data:/var/lib/containerhub
+    stop_grace_period: 30s
     deploy:
       replicas: 1
       placement:
@@ -75,6 +110,8 @@ volumes:
 
 secrets:
   containerhub-test-jwt:
+    external: true
+  containerhub-test-api-key:
     external: true
   containerhub-test-bootstrap-password:
     external: true

@@ -7,7 +7,7 @@ type DocumentedOperation = {
     parameters?: Array<{name?: string}>
     requestBody?: unknown
     responses?: Record<string, unknown>
-    security?: Array<{bearerAuth?: string[]}>
+    security?: Array<{bearerAuth?: string[]; apiKeyAuth?: string[]}>
 }
 type DocumentedPath = {
     get?: DocumentedOperation
@@ -29,8 +29,11 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
         assert.deepEqual(openApiDocument.components?.securitySchemes?.bearerAuth, {
             type: 'http', scheme: 'bearer', bearerFormat: 'JWT'
         })
+        assert.deepEqual(openApiDocument.components?.securitySchemes?.apiKeyAuth, {
+            type: 'apiKey', in: 'header', name: 'X-API-Key'
+        })
         const documentedPaths = openApiDocument.paths as Record<string, DocumentedPath>
-        assert.deepEqual(documentedPaths['/api/services']?.get?.security, [{bearerAuth: []}])
+        assert.deepEqual(documentedPaths['/api/services']?.get?.security, [{bearerAuth: []}, {apiKeyAuth: []}])
         const paginatedServices = documentedPaths['/api/services/paginate']?.get
         assert.equal(paginatedServices?.parameters?.some((parameter) => parameter.name === 'orderBy'), true)
         assert.equal(documentedPaths['/api/registry/image']?.get?.summary, 'List registry images')
@@ -44,7 +47,7 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
             .flatMap(([, path]) => Object.values(path).filter((operation): operation is DocumentedOperation => Boolean(operation)))
         for (const operation of localOperations) {
             assert.ok(operation.summary)
-            assert.deepEqual(operation.security, [{bearerAuth: []}])
+            assert.deepEqual(operation.security, [{bearerAuth: []}, {apiKeyAuth: []}])
             assert.ok(operation.responses?.['200'])
         }
 

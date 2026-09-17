@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+    initializeContainerHubRuntime,
     resolveContainerHubBootstrapUser,
     validateContainerHubEnvironment
 } from '../SetupContainerHub.js'
@@ -8,7 +9,8 @@ import {
 const validMongoEnvironment: NodeJS.ProcessEnv = {
     DRAX_DB_ENGINE: 'mongo',
     DRAX_MONGO_URI: 'mongodb://127.0.0.1:27017/incartainer',
-    DRAX_JWT_SECRET: 'test-only-secret'
+    DRAX_JWT_SECRET: 'test-only-secret',
+    DRAX_APIKEY_SECRET: 'test-only-api-key-secret'
 }
 
 const enabledBootstrapEnvironment: NodeJS.ProcessEnv = {
@@ -93,6 +95,27 @@ test('does not require bootstrap credentials when bootstrap is disabled', () => 
     assert.equal(resolveContainerHubBootstrapUser(environment), null)
 })
 
+test('initializes the worker runtime without bootstrap identity fields', async () => {
+    const originalEnvironment = {...process.env}
+    try {
+        Object.assign(process.env, {
+            DRAX_DB_ENGINE: 'sqlite',
+            DRAX_SQLITE_FILE: 'containerhub-worker.sqlite',
+            DRAX_JWT_SECRET: 'test-only-secret',
+            DRAX_APIKEY_SECRET: 'test-only-api-key-secret',
+            DRAX_PORT: '0',
+            CONTAINERHUB_BOOTSTRAP_ENABLED: 'false',
+            NODE_ENV: 'test'
+        })
+        await initializeContainerHubRuntime()
+    } finally {
+        for (const key of Object.keys(process.env)) {
+            if (!(key in originalEnvironment)) delete process.env[key]
+        }
+        Object.assign(process.env, originalEnvironment)
+    }
+})
+
 test('defaults bootstrap to disabled when the opt-in variable is absent', () => {
     assert.equal(resolveContainerHubBootstrapUser({}), null)
 })
@@ -104,8 +127,22 @@ test('rejects ambiguous bootstrap enabled values', () => {
     )
 })
 
-test('accepts the mandatory MongoDB and JWT configuration', () => {
+test('accepts the mandatory MongoDB, JWT, and API-key configuration', () => {
     assert.doesNotThrow(() => validateContainerHubEnvironment(validMongoEnvironment))
+})
+
+test('rejects startup when DRAX_APIKEY_SECRET is blank', () => {
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, DRAX_APIKEY_SECRET: '   '}),
+        /DRAX_APIKEY_SECRET must be configured/
+    )
+})
+
+test('rejects startup when the API-key secret reuses the JWT secret', () => {
+    assert.throws(
+        () => validateContainerHubEnvironment({...validMongoEnvironment, DRAX_APIKEY_SECRET: validMongoEnvironment.DRAX_JWT_SECRET}),
+        /DRAX_APIKEY_SECRET must differ from DRAX_JWT_SECRET/
+    )
 })
 
 test('requires the browser terminal origin in production', () => {
@@ -168,7 +205,8 @@ test('accepts SQLite when DRAX_SQLITE_FILE is configured', () => {
     const environment: NodeJS.ProcessEnv = {
         DRAX_DB_ENGINE: 'sqlite',
         DRAX_SQLITE_FILE: 'containerhub.db',
-        DRAX_JWT_SECRET: 'test-only-secret'
+        DRAX_JWT_SECRET: 'test-only-secret',
+        DRAX_APIKEY_SECRET: 'test-only-api-key-secret'
     }
 
     assert.doesNotThrow(() => validateContainerHubEnvironment(environment))
@@ -177,7 +215,8 @@ test('accepts SQLite when DRAX_SQLITE_FILE is configured', () => {
 test('rejects SQLite startup when DRAX_SQLITE_FILE is missing', () => {
     const environment: NodeJS.ProcessEnv = {
         DRAX_DB_ENGINE: 'sqlite',
-        DRAX_JWT_SECRET: 'test-only-secret'
+        DRAX_JWT_SECRET: 'test-only-secret',
+        DRAX_APIKEY_SECRET: 'test-only-api-key-secret'
     }
 
     assert.throws(

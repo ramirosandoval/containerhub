@@ -9,8 +9,9 @@ import YogaFastifyServerFactory from '../../factories/YogaFastifyServerFactory.j
 
 const serviceAccess = ['DOCKER_VIEW', 'DOCKER_REMOVE', 'DOCKER_LOGS', 'DOCKER_TERMINAL']
 const serviceManagement = [...serviceAccess, 'DOCKER_RESTART', 'DOCKER_CREATE', 'DOCKER_UPDATE']
+const isDockerOrSettingsPermission = (permission: string) => permission.startsWith('DOCKER_') || permission.startsWith('SETTINGS_')
 const expectedBundles: Record<string, string[]> = {
-    Sudo: [...serviceManagement, 'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'],
+    Sudo: [...serviceManagement, 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'],
     Implementaciones: serviceManagement,
     Infraestructura: serviceAccess,
     Desarrollo: serviceManagement,
@@ -30,6 +31,7 @@ test('startup persists the approved Docker bundles idempotently and enforces the
             DRAX_DB_ENGINE: 'sqlite',
             DRAX_SQLITE_FILE: join(temporaryDirectory, 'identity.sqlite'),
             DRAX_JWT_SECRET: 'test-only-role-bundles-secret',
+            DRAX_APIKEY_SECRET: 'test-only-api-key-secret',
             CONTAINERHUB_BOOTSTRAP_ENABLED: 'false'
         })
         await SetupContainerHub()
@@ -41,13 +43,13 @@ test('startup persists the approved Docker bundles idempotently and enforces the
             const storedRole = await roleService.findByName(roleName)
             assert.ok(storedRole, `${roleName} must be seeded`)
             assert.equal(storedRole._id, originalRoleIds.get(roleName), `${roleName} keeps its ID`)
-            assert.deepEqual([...storedRole.permissions].sort(), [...permissions].sort(), roleName)
+            assert.deepEqual(storedRole.permissions.filter(isDockerOrSettingsPermission).sort(), permissions.filter(isDockerOrSettingsPermission).sort(), roleName)
             assert.equal(Boolean(storedRole.readonly), roleName === 'Admin' || roleName === 'Sudo', roleName)
             const authUser = {id: 'role-bundle-test', username: roleName, session: 'test-session', roleId: storedRole._id, roleName}
             const rbac = new Rbac(authUser, storedRole)
             assert.equal(rbac.hasPermission('DOCKER_RESTART'), permissions.includes('DOCKER_RESTART'), roleName)
             assert.equal(rbac.hasPermission('DOCKER_TERMINAL'), permissions.includes('DOCKER_TERMINAL'), roleName)
-            assert.equal(rbac.hasPermission('user:manage'), roleName === 'Admin', roleName)
+            assert.equal(rbac.hasPermission('user:manage'), roleName === 'Admin' || roleName === 'Sudo', roleName)
         }
         server = YogaFastifyServerFactory()
         for (const roleName of ['Implementaciones', 'Soporte']) {

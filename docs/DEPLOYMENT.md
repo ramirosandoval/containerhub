@@ -4,7 +4,7 @@ Este documento detalla el ciclo de vida de empaquetado, distribución y desplieg
 
 ## 1. Construcción de Imágenes (Build)
 
-El repositorio incluye dos imágenes: la aplicación principal (`containerhub`) y el agente remoto (`containerhub-agent`).
+El repositorio incluye dos imágenes: la aplicación principal (`containerhub`) y el agente remoto (`containerhub-agent`). La imagen principal se ejecuta como los servicios Swarm `app` (API y frontend) y `monitoring` (recolección histórica); ambos usan el mismo tag inmutable.
 Para compilar las imágenes localmente, asegúrate de situarte en la raíz del monorepo:
 
 ```bash
@@ -38,6 +38,7 @@ Antes del primer despliegue, Docker Swarm necesita los certificados en texto pla
 ```bash
 # Crear secretos dummy (solo para validación local en desarrollo)
 echo "dummy-jwt-secret" | docker secret create containerhub-test-jwt -
+echo "dummy-api-key-secret" | docker secret create containerhub-test-api-key -
 echo "admin123" | docker secret create containerhub-test-bootstrap-password -
 
 # Crear secretos de certificados (mTLS)
@@ -58,7 +59,7 @@ docker stack deploy -c docker-compose.yml containerhub
 ```
 
 > [!TIP]
-> Puedes verificar el estado de los servicios usando `docker stack services containerhub` o monitorear los logs del backend usando `docker service logs -f containerhub_app`.
+> Puedes verificar `app`, `monitoring` y `agent` con `docker stack services containerhub`. Para el recolector separado, usa `docker service logs -f containerhub_monitoring`; no publica un puerto ni reemplaza el agente remoto.
 
 ---
 

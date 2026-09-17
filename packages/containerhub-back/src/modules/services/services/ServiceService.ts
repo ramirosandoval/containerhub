@@ -705,7 +705,8 @@ export async function fetchTaskStats(taskId: string) {
 }
 
 export async function fetchServiceStats(serviceIdentifier: string) {
-    return Promise.all((await fetchRawTasks(serviceIdentifier)).map(taskStatistics))
+    const runningTasks = (await fetchRawTasks(serviceIdentifier)).filter(task => getOptionalField(task, 'DesiredState') === 'running')
+    return Promise.all(runningTasks.map(taskStatistics))
 }
 
 async function taskStatistics(task: DockerTask) {

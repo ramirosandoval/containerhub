@@ -9,6 +9,12 @@
 
 ## Current implemented contracts
 
+### Authentication
+
+- Protected REST routes accept either `Authorization: Bearer <JWT>` for the browser session or `X-API-Key: <user API key>` for automation. An API key is an opaque Drax HMAC-backed secret, not a JWT exchange token.
+- Both credentials build the same Drax identity/RBAC context, so route permissions and audit actor metadata remain unchanged.
+- API-key deletion/revocation takes effect after the Drax API-key cache TTL; it is not documented as instantaneous. The terminal WebSocket continues to require its one-use ticket, created through an authenticated terminal-session request.
+
 ### Services
 
 | Contract | Permission | Shape/notes | Status |

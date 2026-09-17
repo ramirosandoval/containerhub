@@ -1,5 +1,5 @@
 import type {FastifySchema, RouteOptions} from 'fastify'
-import {jwtMiddleware, rbacMiddleware, UserRoutes, RoleRoutes, TenantRoutes, UserSessionRoutes, UserLoginFailRoutes, UserApiKeyRoutes} from '@drax/identity-back'
+import {apiKeyMiddleware, jwtMiddleware, rbacMiddleware, UserRoutes, RoleRoutes, TenantRoutes, UserSessionRoutes, UserLoginFailRoutes, UserApiKeyRoutes} from '@drax/identity-back'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import websocket from '@fastify/websocket'
@@ -18,21 +18,25 @@ import YogaFastifyServer from '../servers/YogaFastifyServer.js'
 type OpenApiRouteSchema = FastifySchema & {
     params?: unknown
     response?: Record<string, unknown>
-    security?: Array<{bearerAuth: string[]}>
+    security?: Array<{bearerAuth?: string[]; apiKeyAuth?: string[]}>
     summary?: string
     tags?: string[]
 }
 
 type SwaggerTransformInput = {
-    schema: OpenApiRouteSchema
+    schema?: OpenApiRouteSchema
     url: string
     route: RouteOptions
 }
+
+const dualAuthenticationSecurity = [{bearerAuth: []}, {apiKeyAuth: []}]
 
 function localRouteTag(url: string): string | undefined {
     if (url.startsWith('/api/services') || url.startsWith('/api/docker')) return 'Services'
     if (url.startsWith('/api/registry')) return 'Registry'
     if (url.startsWith('/api/gitlab')) return 'GitLab'
+    if (url.startsWith('/api/monitoring')) return 'Monitoring'
+    if (url.startsWith('/api/settings')) return 'Settings'
     return undefined
 }
 
@@ -59,33 +63,38 @@ export default function YogaFastifyServerFactory() {
             info: {title: 'ContainerHub API', version: '0.1.0'},
             components: {
                 securitySchemes: {
-                    bearerAuth: {type: 'http', scheme: 'bearer', bearerFormat: 'JWT'}
+                    bearerAuth: {type: 'http', scheme: 'bearer', bearerFormat: 'JWT'},
+                    apiKeyAuth: {type: 'apiKey', in: 'header', name: 'X-API-Key'}
                 }
             }
         },
         transform: ({schema, url, route}: SwaggerTransformInput) => {
             const tag = localRouteTag(url)
-            if (!tag) return {schema, url}
+            const routeSchema = schema ?? {}
+            if (!tag) return {schema: routeSchema, url}
 
             const parameterNames = [...url.matchAll(/:([^/]+)/g)].map((match) => match[1])
-            const schemaWithPathParameters = parameterNames.length && !schema.params
+            const schemaWithPathParameters = parameterNames.length && !routeSchema.params
                 ? {
-                    ...schema,
+                    ...routeSchema,
                     params: {
                         type: 'object',
                         required: parameterNames,
                         properties: Object.fromEntries(parameterNames.map((parameterName) => [parameterName, {type: 'string'}]))
                     }
                 }
-                : schema
+                : routeSchema
+            const security = routeSchema.security?.some((requirement) => requirement.bearerAuth)
+                ? dualAuthenticationSecurity
+                : routeSchema.security ?? dualAuthenticationSecurity
             return {
                 url,
                 schema: {
                     ...schemaWithPathParameters,
-                    tags: schema.tags ?? [tag],
-                    summary: schema.summary ?? `${String(route.method)} ${url}`,
-                    security: schema.security ?? [{bearerAuth: []}],
-                    response: schema.response ?? {'200': {description: 'Successful response'}}
+                    tags: routeSchema.tags ?? [tag],
+                    summary: routeSchema.summary ?? `${String(route.method)} ${url}`,
+                    security,
+                    response: routeSchema.response ?? {'200': {description: 'Successful response'}}
                 }
             }
         }
@@ -104,6 +113,10 @@ export default function YogaFastifyServerFactory() {
     server.fastify.addHook('onRequest', ((request: any, reply: any, done: () => void) => {
         if (isTerminalWebSocketRequest(request)) return done()
         return (jwtMiddleware as any)(request, reply, done)
+    }) as any)
+    server.fastify.addHook('onRequest', ((request: any, reply: any, done: () => void) => {
+        if (isTerminalWebSocketRequest(request)) return done()
+        return (apiKeyMiddleware as any)(request, reply, done)
     }) as any)
     server.fastify.addHook('onRequest', ((request: any, reply: any, done: () => void) => {
         if (isTerminalWebSocketRequest(request)) return done()

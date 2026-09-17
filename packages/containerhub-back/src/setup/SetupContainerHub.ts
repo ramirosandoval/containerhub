@@ -122,6 +122,12 @@ export function validateContainerHubEnvironment(environment: NodeJS.ProcessEnv =
     if (!environment[IdentityConfig.JwtSecret]?.trim()) {
         throw new Error(`${IdentityConfig.JwtSecret} must be configured`)
     }
+    if (!environment[IdentityConfig.ApiKeySecret]?.trim()) {
+        throw new Error(`${IdentityConfig.ApiKeySecret} must be configured`)
+    }
+    if (environment[IdentityConfig.ApiKeySecret] === environment[IdentityConfig.JwtSecret]) {
+        throw new Error(`${IdentityConfig.ApiKeySecret} must differ from ${IdentityConfig.JwtSecret}`)
+    }
 
     if (environment.NODE_ENV === 'production') {
         const configuredOrigin = environment.TERMINAL_ALLOWED_ORIGIN?.trim()
@@ -136,10 +142,19 @@ export function validateContainerHubEnvironment(environment: NodeJS.ProcessEnv =
     resolveContainerHubBootstrapUser(environment)
 }
 
-export default async function SetupContainerHub() {
+export async function initializeContainerHubRuntime(): Promise<void> {
     validateContainerHubEnvironment()
     LoadCommonConfigFromEnv()
     LoadIdentityConfigFromEnv()
+    if (DraxConfig.getOrLoad(CommonConfig.DbEngine) === COMMON.DB_ENGINES.MONGODB) {
+        console.log('Connecting to MongoDB...')
+        const uri = DraxConfig.getOrLoad(CommonConfig.MongoDbUri)
+        await new MongooseConector(uri).connect()
+    }
+}
+
+export default async function SetupContainerHub() {
+    await initializeContainerHubRuntime()
     LoadPermissions([
         ...dockerPermissions,
         'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
@@ -150,12 +165,5 @@ export default async function SetupContainerHub() {
         'tenant:manage', 'tenant:view', 'tenant:create', 'tenant:update', 'tenant:delete',
         'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'
     ])
-
-    if (DraxConfig.getOrLoad(CommonConfig.DbEngine) === COMMON.DB_ENGINES.MONGODB) {
-        console.log('Connecting to MongoDB...')
-        const uri = DraxConfig.getOrLoad(CommonConfig.MongoDbUri)
-        await new MongooseConector(uri).connect()
-    }
-
     await createRolesAndBootstrapUser(resolveContainerHubBootstrapUser())
 }

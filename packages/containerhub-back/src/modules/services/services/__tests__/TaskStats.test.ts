@@ -2,9 +2,13 @@ import assert from 'node:assert/strict'
 import test, {mock} from 'node:test'
 import Fastify from 'fastify'
 
-const localTask = {ID: 'local-task', NodeID: 'manager', Status: {ContainerStatus: {ContainerID: 'local-container'}}}
-const workerTask = {ID: 'worker-task', NodeID: 'worker', Status: {ContainerStatus: {ContainerID: 'worker-container'}}}
-const unassignedTask = {ID: 'pending-task', Status: {}}
+const localTask = {ID: 'local-task', NodeID: 'manager', DesiredState: 'running', Status: {ContainerStatus: {ContainerID: 'local-container'}}}
+const workerTask = {ID: 'worker-task', NodeID: 'worker', DesiredState: 'running', Status: {ContainerStatus: {ContainerID: 'worker-container'}}}
+const unassignedTask = {ID: 'pending-task', DesiredState: 'running', Status: {}}
+const staleTask = {ID: 'stale-task', NodeID: 'manager', DesiredState: 'shutdown', Status: {State: 'shutdown', ContainerStatus: {ContainerID: 'stale-container'}}}
+const localTaskModel = {id: 'local-task', nodeId: 'manager', containerId: 'local-container', serviceId: undefined, state: undefined, message: undefined, createdAt: undefined, updatedAt: undefined}
+const workerTaskModel = {id: 'worker-task', nodeId: 'worker', containerId: 'worker-container', serviceId: undefined, state: undefined, message: undefined, createdAt: undefined, updatedAt: undefined}
+const unassignedTaskModel = {id: 'pending-task', nodeId: undefined, containerId: undefined, serviceId: undefined, state: undefined, message: undefined, createdAt: undefined, updatedAt: undefined}
 const sampledStats = {
     cpu_stats: {cpu_usage: {total_usage: 300}, system_cpu_usage: 2000, online_cpus: 4},
     precpu_stats: {cpu_usage: {total_usage: 100}, system_cpu_usage: 1000},
@@ -20,10 +24,11 @@ let requestedContainers: string[] = []
 class DockerStub {
     getTask(taskId: string) { return {inspect: async () => taskId === localTask.ID ? localTask : workerTask} }
     getService() { return {inspect: async () => ({ID: 'service'})} }
-    listTasks() { return Promise.resolve([localTask, workerTask, unassignedTask]) }
+    listTasks() { return Promise.resolve([localTask, workerTask, unassignedTask, staleTask]) }
     info() { return Promise.resolve({Swarm: {NodeID: 'manager'}}) }
     getContainer(containerId: string) {
         requestedContainers.push(containerId)
+        if (containerId === 'stale-container') throw new Error('No such container: stale-container')
         assert.equal(containerId, 'local-container', 'remote containers must never hit the manager daemon')
         return {stats: async (options: unknown) => {
             assert.deepEqual(options, {stream: false})
@@ -46,16 +51,16 @@ test.after(() => { dockerMock.restore(); agentMock.restore() })
 test.beforeEach(() => { workerAvailable = true; requestedContainers = [] })
 
 test('task stats select the task node while preserving local daemon access', async () => {
-    assert.deepEqual(await fetchTaskStats('worker-task'), {task: workerTask, stats: {id: 'worker-container', ...sampledStats}, metrics: expectedMetrics})
-    assert.deepEqual(await fetchTaskStats('local-task'), {task: localTask, stats: {id: 'local-container', ...sampledStats}, metrics: expectedMetrics})
+    assert.deepEqual(await fetchTaskStats('worker-task'), {task: workerTaskModel, stats: {id: 'worker-container', ...sampledStats}, metrics: expectedMetrics})
+    assert.deepEqual(await fetchTaskStats('local-task'), {task: localTaskModel, stats: {id: 'local-container', ...sampledStats}, metrics: expectedMetrics})
     assert.deepEqual(requestedContainers, ['local-container'])
 })
 
 test('service stats share task routing and preserve null stats for unassigned tasks', async () => {
     assert.deepEqual(await fetchServiceStats('service'), [
-        {task: localTask, stats: {id: 'local-container', ...sampledStats}, metrics: expectedMetrics},
-        {task: workerTask, stats: {id: 'worker-container', ...sampledStats}, metrics: expectedMetrics},
-        {task: unassignedTask, stats: null, metrics: null}
+        {task: localTaskModel, stats: {id: 'local-container', ...sampledStats}, metrics: expectedMetrics},
+        {task: workerTaskModel, stats: {id: 'worker-container', ...sampledStats}, metrics: expectedMetrics},
+        {task: unassignedTaskModel, stats: null, metrics: null}
     ])
 })
 

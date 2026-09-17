@@ -74,3 +74,32 @@ test('monitoring collector persists bounded history, follows replicas and expose
         await rm(directory, {recursive: true, force: true})
     }
 })
+
+test('monitoring collector follows the stored service name when a Swarm service is recreated', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'containerhub-monitoring-recreated-service-'))
+    const database = join(directory, 'monitoring.sqlite')
+    const configurations = new MonitoringSqliteRepository(database)
+    const samples = new MonitoringSampleSqliteRepository(database)
+    configurations.build()
+    samples.build()
+    const monitoringService = new MonitoringService(configurations)
+    const sampleService = new MonitoringSampleService(samples)
+    const configuration = await monitoringService.create({...permanent('retired-service-id'), serviceName: 'containerhub_app'})
+    const now = new Date('2026-09-09T12:00:00.000Z')
+    const identifiers: string[] = []
+    const collector = new MonitoringCollector(monitoringService, sampleService, async (identifier) => {
+        identifiers.push(identifier)
+        if (identifier === 'retired-service-id') throw new Error('Service not found')
+        return [{task: {id: 'current-task', nodeId: 'manager', state: 'running'}, metrics: metrics(10, now.toISOString())}]
+    })
+    try {
+        assert.deepEqual(await collector.collect(now), {recorded: 1, failures: []})
+        assert.deepEqual(identifiers, ['retired-service-id', 'containerhub_app'])
+        assert.equal((await sampleService.history(configuration._id)).length, 1)
+    } finally {
+        await collector.stop()
+        samples.close()
+        configurations.close()
+        await rm(directory, {recursive: true, force: true})
+    }
+})
