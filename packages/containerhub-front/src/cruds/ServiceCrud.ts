@@ -111,6 +111,7 @@ class ServiceCrud extends EntityCrud {
     override get searchEnable(): boolean { return true }
     override get filtersEnable(): boolean { return true }
     override get dynamicFiltersEnable(): boolean { return true }
+    override get filterButtons(): boolean { return false }
 
     override get fields(): IEntityCrud['fields'] {
         return [

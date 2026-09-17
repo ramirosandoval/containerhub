@@ -1,7 +1,7 @@
 <template>
     <v-container fluid>
-        <v-card>
-            <v-toolbar>
+        <v-card :class="MonitoringCrud.instance.cardClass" :density="MonitoringCrud.instance.cardDensity">
+            <v-toolbar :class="MonitoringCrud.instance.toolbarClass" :density="MonitoringCrud.instance.toolbarDensity">
                 <v-toolbar-title>{{ t('monitoring.title') }}</v-toolbar-title>
                 <v-spacer/>
                 <v-btn v-if="auth.hasPermission('DOCKER_MONITORING_CREATE')" prepend-icon="mdi-plus" @click="openCreate">{{ t('monitoring.create') }}</v-btn>
@@ -16,12 +16,13 @@
                 <v-alert v-if="feedback" type="success" class="mb-4" closable @click:close="feedback = ''">{{ feedback }}</v-alert>
                 <crud-search v-if="MonitoringCrud.instance.searchEnable" v-model="search" />
                 <v-card v-if="isDynamicFiltersEnable" id="crud-list-table-default-filters" class="crud-list-table__default-filters mt-4" variant="flat">
-                    <crud-filters v-if="MonitoringCrud.instance.filtersEnable" v-model="filters" :auto-filter="false" :entity="MonitoringCrud.instance"/>
-                    <crud-filters-action :entity="MonitoringCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
+                    <auto-crud-filters v-if="MonitoringCrud.instance.filtersEnable" v-model="filters" :entity="MonitoringCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
                 </v-card>
             </v-card-text>
             <v-data-table-server v-model:page="page" v-model:items-per-page="itemsPerPage" v-model:sort-by="sortBy"
-                :headers="filteredHeaders" :items="configurations" :items-length="totalItems" :loading="loading" :items-per-page-options="[5, 10, 25, 50, 100]" @update:options="doPaginate">
+                :headers="filteredHeaders" :header-props="MonitoringCrud.instance.headerProps" :items="configurations" :items-length="totalItems" :loading="loading"
+                :density="MonitoringCrud.instance.tableDensity" :striped="MonitoringCrud.instance.tableStriped" :items-per-page-options="[5, 10, 25, 50, 100]" @update:options="doPaginate">
+                <template #bottom><v-data-table-footer :class="MonitoringCrud.instance.footerClass" :items-per-page-options="[5, 10, 25, 50, 100]"/></template>
                 <template #item.status="{item}"><v-chip :color="item.status === 'paused' ? 'warning' : 'primary'">{{ t(`monitoring.${item.status}`) }}</v-chip></template>
                 <template #item.period="{item}">{{ item.type === 'calendar' ? `${item.since} — ${item.until}` : `${item.holdingTime} ${t('monitoring.days')}` }}</template>
                 <template #item.actions="{item}">
@@ -71,7 +72,7 @@
 import {computed, reactive, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useAuthStore} from '@drax/identity-vue'
-import {useCrud, CrudFilters, CrudFiltersAction, CrudSearch, CrudSavedQueriesButton, CrudRefreshButton} from '@drax/crud-vue'
+import {useCrud, CrudSearch, CrudSavedQueriesButton, CrudRefreshButton} from '@drax/crud-vue'
 import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterButton.vue'
 import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
@@ -79,6 +80,7 @@ import {useRouter} from 'vue-router'
 import MonitoringCrud, {monitoringProvider, type MonitoringConfiguration} from '@/cruds/MonitoringCrud'
 import type {Service} from '@/cruds/ServiceCrud'
 import {restGet} from '@/rest'
+import AutoCrudFilters from '@/components/AutoCrudFilters.vue'
 
 const {t} = useI18n()
 const auth = useAuthStore()

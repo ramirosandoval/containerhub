@@ -75,5 +75,6 @@ class MonitoringCrud extends EntityCrud {
     override get searchEnable(): boolean { return true }
     override get filtersEnable(): boolean { return true }
     override get dynamicFiltersEnable(): boolean { return true }
+    override get filterButtons(): boolean { return false }
 }
 export default MonitoringCrud

@@ -43,8 +43,6 @@ test('filters and refreshes the Docker network inventory', async ({page}) => {
     await page.getByLabel('Creada desde', {exact: true}).fill(createdDate)
     await page.getByLabel('Creada hasta', {exact: true}).fill(createdDate)
     await page.getByRole('textbox', {name: 'Subred', exact: true}).fill('10.254.1')
-    await page.getByRole('button', {name: 'Aplicar'}).click()
-
     await expect(page.getByText(matchingNetwork, {exact: true})).toBeVisible()
     await expect(page.getByText(excludedNetwork, {exact: true})).toHaveCount(0)
 

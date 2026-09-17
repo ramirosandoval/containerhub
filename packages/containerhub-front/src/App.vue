@@ -70,7 +70,9 @@ const currentIcon = computed(() => {
     --app-section-gutter: 16px;
 }
 .v-main > .v-container {
-    max-width: 100%;
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0;
     padding: var(--app-section-gutter) !important;
 }
 .v-main > .v-container.crud {

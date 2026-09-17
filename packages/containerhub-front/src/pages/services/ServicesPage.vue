@@ -1,27 +1,9 @@
 <template>
     <v-container fluid>
-        <v-card variant="flat">
-        <v-toolbar density="comfortable">
+        <v-card :class="ServiceCrud.instance.cardClass" :density="ServiceCrud.instance.cardDensity">
+        <v-toolbar :class="ServiceCrud.instance.toolbarClass" :density="ServiceCrud.instance.toolbarDensity">
             <v-toolbar-title>{{ t('services.title') }}</v-toolbar-title>
             <v-spacer/>
-            <v-btn
-                v-if="authStore.hasPermission('DOCKER_RESTART')"
-                :disabled="selected.length === 0"
-                :loading="restarting"
-                color="primary"
-                prepend-icon="mdi-restart"
-                variant="tonal"
-                @click="restartDialog = true"
-            >{{ t('services.restartSelected') }} ({{ selected.length }})</v-btn>
-            <v-btn
-                v-if="authStore.hasPermission('DOCKER_REMOVE')"
-                :disabled="selected.length === 0"
-                :loading="removing"
-                color="error"
-                prepend-icon="mdi-delete"
-                variant="tonal"
-                @click="removeDialog = true"
-            >{{ t('services.removeSelected') }} ({{ selected.length }})</v-btn>
             <crud-filter-button v-if="ServiceCrud.instance.dynamicFiltersEnable" :entity="ServiceCrud.instance"/>
             <crud-columns-button v-if="ServiceCrud.instance.isColumnSelectable" :entity="ServiceCrud.instance"/>
             <crud-saved-queries-button v-if="ServiceCrud.instance.isSavedQueriesEnabled" :entity="ServiceCrud.instance" />
@@ -46,10 +28,29 @@
             </v-alert>
             <crud-search v-if="ServiceCrud.instance.searchEnable" v-model="search"/>
             <v-card v-if="isDynamicFiltersEnable" id="crud-list-table-default-filters" class="crud-list-table__default-filters mt-4" variant="flat">
-                <crud-filters v-if="ServiceCrud.instance.filtersEnable" v-model="filters" :auto-filter="false" :entity="ServiceCrud.instance"/>
-                <crud-filters-action :entity="ServiceCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
+                <auto-crud-filters v-if="ServiceCrud.instance.filtersEnable" v-model="filters" :entity="ServiceCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
             </v-card>
         </v-card-text>
+        <v-card-actions v-if="selected.length" class="flex-wrap ga-2 px-4 pb-4 pt-0">
+            <v-spacer/>
+            <v-btn
+                v-if="authStore.hasPermission('DOCKER_RESTART')"
+                :loading="restarting"
+                prepend-icon="mdi-restart"
+                size="small"
+                variant="text"
+                @click="restartDialog = true"
+            >{{ t('services.restartSelected') }} ({{ selected.length }})</v-btn>
+            <v-btn
+                v-if="authStore.hasPermission('DOCKER_REMOVE')"
+                :loading="removing"
+                color="error"
+                prepend-icon="mdi-delete"
+                size="small"
+                variant="flat"
+                @click="removeDialog = true"
+            >{{ t('services.removeSelected') }} ({{ selected.length }})</v-btn>
+        </v-card-actions>
         <v-divider/>
         <v-data-table-server
             v-model:items-per-page="itemsPerPage"
@@ -57,9 +58,12 @@
             v-model="selected"
             v-model:sort-by="sortBy"
             :headers="filteredHeaders"
+            :header-props="ServiceCrud.instance.headerProps"
             :items="items"
             :items-length="totalItems"
             :loading="loading"
+            :density="ServiceCrud.instance.tableDensity"
+            :striped="ServiceCrud.instance.tableStriped"
             :search="search"
             :items-per-page-options="[5, 10, 20, 50]"
             item-value="id"
@@ -68,6 +72,9 @@
             :show-select="authStore.hasPermission('DOCKER_RESTART') || authStore.hasPermission('DOCKER_REMOVE')"
             @update:options="doPaginate"
         >
+            <template #bottom>
+                <v-data-table-footer :class="ServiceCrud.instance.footerClass" :items-per-page-options="[5, 10, 20, 50]"/>
+            </template>
             <template #item.data-table-expand="{item, internalItem, isExpanded, toggleExpand}">
                 <v-btn :icon="isExpanded(internalItem) ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" variant="text" @click.stop="toggleTasks(item, internalItem, isExpanded, toggleExpand)"/>
             </template>
@@ -150,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import {CrudFilters, CrudFiltersAction, CrudRefreshButton, CrudSearch, useCrud, CrudSavedQueriesButton} from '@drax/crud-vue'
+import {CrudRefreshButton, CrudSearch, useCrud, CrudSavedQueriesButton} from '@drax/crud-vue'
 import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterButton.vue'
 import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
@@ -160,6 +167,7 @@ import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useAuthStore} from '@drax/identity-vue'
 import type {IDraxFieldFilter} from '@drax/crud-share'
+import AutoCrudFilters from '@/components/AutoCrudFilters.vue'
 import {ServiceCrud, type Service} from '@/cruds/ServiceCrud'
 import {restGet, restPost} from '@/rest'
 import {rememberTerminalTicket} from './terminalTickets'

@@ -115,7 +115,7 @@ class NetworksCrud extends EntityCrud {
     override get containerFluid(): boolean { return true }
     override get filtersEnable(): boolean { return true }
     override get dynamicFiltersEnable(): boolean { return true }
-    override get filterButtons(): boolean { return true }
+    override get filterButtons(): boolean { return false }
     override get filters(): IEntityCrud['filters'] {
         return [
             {name: 'name', type: 'string', label: 'name', default: null, operator: 'like'},

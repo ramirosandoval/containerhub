@@ -2,8 +2,7 @@
     <Crud :entity="NetworksCrud.instance">
         <template #filters="{filters}">
             <v-card v-if="isDynamicFiltersEnable" id="crud-list-table-default-filters" class="crud-list-table__default-filters" variant="flat">
-                <crud-filters v-model="filtersRef" :auto-filter="false" :entity="NetworksCrud.instance"/>
-                <crud-filters-action :entity="NetworksCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
+                <auto-crud-filters v-model="filtersRef" :entity="NetworksCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
             </v-card>
         </template>
         <template #item.Created="{value}">{{ formatCreated(value) }}</template>
@@ -14,8 +13,9 @@
 </template>
 
 <script setup lang="ts">
-import {Crud, useCrud, CrudFilters, CrudFiltersAction} from '@drax/crud-vue'
+import {Crud, useCrud} from '@drax/crud-vue'
 import {formatDateTime} from '@drax/common-front'
+import AutoCrudFilters from '@/components/AutoCrudFilters.vue'
 import {NetworksCrud} from '@/cruds/NetworksCrud'
 const {isDynamicFiltersEnable, filters: filtersRef, applyFilters, clearFilters} = useCrud(NetworksCrud.instance)
 
