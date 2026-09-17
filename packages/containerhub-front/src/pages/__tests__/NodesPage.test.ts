@@ -11,17 +11,23 @@ test('formats Docker node CPU and memory resources like the original cluster vie
 })
 
 test('node page displays the resources returned by the existing API', async () => {
-    const page = await readFile(new URL('../NodesPage.vue', import.meta.url), 'utf8')
+    const [page, crud] = await Promise.all([
+        readFile(new URL('../NodesPage.vue', import.meta.url), 'utf8'),
+        readFile(new URL('../../cruds/NodesCrud.ts', import.meta.url), 'utf8')
+    ])
 
-    assert.match(page, /nodes\.resources/)
+    assert.match(crud, /title: 'resources', key: 'resources'/)
     assert.match(page, /#item\.resources/)
     assert.match(page, /formatNodeResources/)
 })
 
 test('node page displays healthy, unavailable and unconfigured agent states', async () => {
-    const page = await readFile(new URL('../NodesPage.vue', import.meta.url), 'utf8')
+    const [page, crud] = await Promise.all([
+        readFile(new URL('../NodesPage.vue', import.meta.url), 'utf8'),
+        readFile(new URL('../../cruds/NodesCrud.ts', import.meta.url), 'utf8')
+    ])
 
-    assert.match(page, /nodes\.agent/)
+    assert.match(crud, /title: 'agentHealthy', key: 'agentHealthy'/)
     assert.match(page, /#item\.agentHealthy/)
     assert.match(page, /value === true/)
     assert.match(page, /value === false/)

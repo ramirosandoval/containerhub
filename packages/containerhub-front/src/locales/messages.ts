@@ -37,7 +37,7 @@ export const es = {
         open: 'Abrir servicios',
         openServices: 'Abrir servicios de {stack}',
     },
-    nodes: {title: 'Nodos swarm', id: 'ID', hostname: 'Nombre del host', ip: 'IP', role: 'Rol', availability: 'Disponibilidad', state: 'Estado', engine: 'Motor', leader: 'Lider', reachability: 'Alcanzabilidad', agent: 'Agent', resources: 'Recursos'},
+    nodes: {title: 'Nodos swarm', id: 'ID', hostname: 'Nombre del host', ip: 'IP', role: 'Rol', availability: 'Disponibilidad', state: 'Estado', engine: 'Motor', leader: 'Lider', reachability: 'Alcanzabilidad', agent: 'Agente', resources: 'Recursos'},
     ghostContainers: {title: 'Contenedores fantasma', created: 'Creado', image: 'Imagen', status: 'Estado', id: 'ID', node: 'Nodo'},
     networks: {title: 'Redes', name: 'Nombre', created: 'Fecha de creacion', driver: 'Driver', attachable: 'Enlazable', ipamDriver: 'Driver IPAM', subnet: 'Subnet IPAM Ipv4', gateway: 'Gateway IPAM Ipv4', createdFrom: 'Creada desde', createdTo: 'Creada hasta', yes: 'Sí', no: 'No', apply: 'Aplicar', reset: 'Limpiar', refresh: 'Actualizar redes'},
     dockerVersion: {title: 'Versión de Docker', engine: 'Versión del motor', api: 'Versión de la API'},
@@ -110,6 +110,9 @@ export const es = {
         cpu: 'CPU', memory: 'Memoria', io: 'Lectura / escritura', network: 'Red recibida / enviada', sampledAt: 'Muestra',
         cpuThreshold: 'Alerta CPU (%)', memoryThreshold: 'Alerta memoria (GB)', ioThreshold: 'Alerta lectura (MB)', networkThreshold: 'Alerta red recibida (MB)'
     },
+    error: {
+        unauthorized: 'No tienes permisos para realizar esta acción.',
+    }
 }
 
 export const en = {
@@ -137,7 +140,7 @@ export const en = {
     stack: {crud: 'Stacks', field: {name: 'StackName', services: 'Services'}},
     node: {crud: 'Swarm nodes', field: {id: 'ID', hostname: 'Hostname', ip: 'IP', role: 'Role', availability: 'Availability', state: 'State', engine: 'Engine', leader: 'Leader', reachability: 'Reachability', agentHealthy: 'Agent', resources: 'Resources'}},
     ghostcontainer: {crud: 'Ghost containers', field: {created: 'Created', image: 'Image', status: 'Status', id: 'ID', node: 'Node'}},
-    network: {crud: 'Networks', field: {name: 'Name', created: 'Fecha de creacion', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Ipv4 IPAM subnet', gateway: 'Ipv4 IPAM gateway', createdFrom: 'Created from', createdTo: 'Created to'}},
+    network: {crud: 'Networks', field: {name: 'Name', created: 'Creation date', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Ipv4 IPAM subnet', gateway: 'Ipv4 IPAM gateway', createdFrom: 'Created from', createdTo: 'Created to'}},
     registryimage: {crud: 'Registry images', field: {name: 'Name', tags: 'Tags'}},
     gitlabproject: {crud: 'GitLab projects', field: {id: 'ID', namespace: 'Namespace', name: 'Name', tags: 'Tags'}},
     taskmonitorization: {crud: 'Tasks monitorization', field: {date: 'Date', status: 'Event', taskId: 'Task ID', nodeName: 'Node', serviceName: 'Service', modifiedBy: 'Modified by'}},
@@ -150,8 +153,8 @@ export const en = {
         openServices: 'Open services for {stack}',
     },
     nodes: {title: 'Swarm nodes', id: 'ID', hostname: 'Hostname', ip: 'IP', role: 'Role', availability: 'Availability', state: 'State', engine: 'Engine', leader: 'Leader', reachability: 'Reachability', agent: 'Agent', resources: 'Resources'},
-    ghostContainers: {title: 'Monitorizacion de contenedores fantasma', created: 'Created', image: 'Image', status: 'Status', id: 'ID', node: 'Node'},
-    networks: {title: 'Networks', name: 'Name', created: 'Fecha de creacion', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Ipv4 IPAM subnet', gateway: 'Ipv4 IPAM gateway', createdFrom: 'Created from', createdTo: 'Created to', yes: 'Yes', no: 'No', apply: 'Apply', reset: 'Clear', refresh: 'Refresh networks'},
+    ghostContainers: {title: 'Ghost containers', created: 'Created', image: 'Image', status: 'Status', id: 'ID', node: 'Node'},
+    networks: {title: 'Networks', name: 'Name', created: 'Creation date', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Ipv4 IPAM subnet', gateway: 'Ipv4 IPAM gateway', createdFrom: 'Created from', createdTo: 'Created to', yes: 'Yes', no: 'No', apply: 'Apply', reset: 'Clear', refresh: 'Refresh networks'},
     dockerVersion: {title: 'Docker version', engine: 'Engine version', api: 'API version'},
     cluster: {
         title: 'Cluster Information', nodes: 'Nodes', services: 'Services', tasks: 'Tasks', taskHint: 'Includes historical tasks retained by Docker, not only running tasks.', error: 'Could not load cluster information.', retry: 'Retry',
@@ -222,4 +225,7 @@ export const en = {
         cpu: 'CPU', memory: 'Memory', io: 'Read / write', network: 'Network received / sent', sampledAt: 'Sample',
         cpuThreshold: 'CPU warning (%)', memoryThreshold: 'Memory warning (GB)', ioThreshold: 'Read warning (MB)', networkThreshold: 'Network received warning (MB)'
     },
+    error: {
+        unauthorized: 'You do not have permission to perform this action.',
+    }
 }

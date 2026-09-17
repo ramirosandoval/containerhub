@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import test from 'node:test'
-import {filterNetworks} from '../networkFilters.js'
+import {filterNetworks, networkFiltersFromDrax} from '../networkFilters.js'
 
 const networks = [
     {
@@ -33,12 +33,25 @@ test('filters networks by name, driver, attachable state, inclusive dates and su
     assert.deepEqual(filterNetworks(networks, {attachable: false}), [networks[1]])
 })
 
-test('network page exposes explicit apply/reset, manual refresh and Drax date formatting', async () => {
-    const page = await readFile(new URL('../NetworksPage.vue', import.meta.url), 'utf8')
+test('adapts Drax field filters without losing false or local dates', () => {
+    assert.deepEqual(networkFiltersFromDrax([
+        {field: 'name', value: 'front'},
+        {field: 'attachable', value: false},
+        {field: 'created', operator: 'gte', value: new Date(2026, 8, 2)},
+        {field: 'created', operator: 'lte', value: '2026-09-03'},
+    ]), {name: 'front', attachable: false, since: '2026-09-02', until: '2026-09-03'})
+})
 
-    assert.match(page, /@click="applyFilters"/)
-    assert.match(page, /@click="resetFilters"/)
-    assert.match(page, /@click="fetchNetworks"/)
+test('network page uses the Drax filter and column controls', async () => {
+    const [page, crud] = await Promise.all([
+        readFile(new URL('../NetworksPage.vue', import.meta.url), 'utf8'),
+        readFile(new URL('../../cruds/NetworksCrud.ts', import.meta.url), 'utf8')
+    ])
+
+    assert.match(page, /crud-filters-action/)
+    assert.doesNotMatch(page, /<v-card-text[^>]+id="crud-list-table-filters-section"/)
+    assert.match(crud, /isColumnSelectable[^\n]*true/)
+    assert.match(crud, /dynamicFiltersEnable[^\n]*true/)
+    assert.match(crud, /filterButtons[^\n]*true/)
     assert.match(page, /formatDateTime/)
-    assert.match(page, /type="date"/)
 })

@@ -105,12 +105,12 @@ class ServiceCrud extends EntityCrud {
     override get isRefreshable(): boolean { return true }
     override get isExportable(): boolean { return false }
     override get isImportable(): boolean { return false }
-    override get isColumnSelectable(): boolean { return false }
+    override get isColumnSelectable(): boolean { return true }
     override get isGroupable(): boolean { return false }
     override get isSavedQueriesEnabled(): boolean { return false }
     override get searchEnable(): boolean { return true }
     override get filtersEnable(): boolean { return true }
-    override get dynamicFiltersEnable(): boolean { return false }
+    override get dynamicFiltersEnable(): boolean { return true }
 
     override get fields(): IEntityCrud['fields'] {
         return [

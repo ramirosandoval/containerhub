@@ -15,7 +15,8 @@ export type NetworkFilters = {
     subnet?: string
 }
 
-function localDate(created: string | undefined): string | undefined {
+function localDate(created: string | Date | undefined): string | undefined {
+    if (typeof created === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(created)) return created
     const date = new Date(created ?? '')
     if (Number.isNaN(date.getTime())) return undefined
     const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -39,18 +40,19 @@ export function filterNetworks(networks: Network[], filters: NetworkFilters): Ne
     })
 }
 
-export function networkFiltersFromDrax(draxFilters: any[] | undefined): NetworkFilters {
+type DraxNetworkFilter = {field?: string; name?: string; operator?: string; value?: unknown}
+
+export function networkFiltersFromDrax(draxFilters: DraxNetworkFilter[] | undefined): NetworkFilters {
     if (!draxFilters) return {}
-    const res: NetworkFilters = {}
-    for (const f of draxFilters) {
-        if (f.name === 'name') res.name = f.value
-        else if (f.name === 'attachable') res.attachable = f.value
-        else if (f.name === 'driver') res.driver = f.value
-        else if (f.name === 'created' && Array.isArray(f.value)) {
-            res.since = f.value[0]
-            res.until = f.value[1]
-        }
-        else if (f.name === 'subnet') res.subnet = f.value
+    const filters: NetworkFilters = {}
+    for (const filter of draxFilters) {
+        const field = filter.field ?? filter.name
+        if (field === 'name' && typeof filter.value === 'string') filters.name = filter.value
+        else if (field === 'attachable' && typeof filter.value === 'boolean') filters.attachable = filter.value
+        else if (field === 'driver' && typeof filter.value === 'string') filters.driver = filter.value
+        else if (field === 'created' && filter.operator === 'gte') filters.since = localDate(filter.value as string | Date)
+        else if (field === 'created' && filter.operator === 'lte') filters.until = localDate(filter.value as string | Date)
+        else if (field === 'subnet' && typeof filter.value === 'string') filters.subnet = filter.value
     }
-    return res
+    return filters
 }

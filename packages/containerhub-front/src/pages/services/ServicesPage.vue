@@ -1,5 +1,6 @@
 <template>
-    <v-card variant="flat">
+    <v-container fluid>
+        <v-card variant="flat">
         <v-toolbar density="comfortable">
             <v-toolbar-title>{{ t('services.title') }}</v-toolbar-title>
             <v-spacer/>
@@ -21,7 +22,10 @@
                 variant="tonal"
                 @click="removeDialog = true"
             >{{ t('services.removeSelected') }} ({{ selected.length }})</v-btn>
-            <crud-refresh-button @click="doPaginate"/>
+            <crud-filter-button v-if="ServiceCrud.instance.dynamicFiltersEnable" :entity="ServiceCrud.instance"/>
+            <crud-columns-button v-if="ServiceCrud.instance.isColumnSelectable" :entity="ServiceCrud.instance"/>
+            <crud-saved-queries-button v-if="ServiceCrud.instance.isSavedQueriesEnabled" :entity="ServiceCrud.instance" />
+            <crud-refresh-button v-if="ServiceCrud.instance.isRefreshable !== false" @click="doPaginate"/>
         </v-toolbar>
         <v-card-text>
             <v-alert v-if="restartResults.length" class="mb-4" closable type="info" variant="tonal" @click:close="restartResults = []">
@@ -41,8 +45,10 @@
                 </div>
             </v-alert>
             <crud-search v-if="ServiceCrud.instance.searchEnable" v-model="search"/>
-            <crud-filters v-if="ServiceCrud.instance.filtersEnable" v-model="filters" :auto-filter="!ServiceCrud.instance.filterButtons" :entity="ServiceCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
-            <crud-filters-action v-if="ServiceCrud.instance.filterButtons" :entity="ServiceCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
+            <v-card v-if="isDynamicFiltersEnable" id="crud-list-table-default-filters" class="crud-list-table__default-filters mt-4" variant="flat">
+                <crud-filters v-if="ServiceCrud.instance.filtersEnable" v-model="filters" :auto-filter="false" :entity="ServiceCrud.instance"/>
+                <crud-filters-action :entity="ServiceCrud.instance" @apply-filter="applyFilters" @clear-filter="clearFilters"/>
+            </v-card>
         </v-card-text>
         <v-divider/>
         <v-data-table-server
@@ -50,7 +56,7 @@
             v-model:page="page"
             v-model="selected"
             v-model:sort-by="sortBy"
-            :headers="headers"
+            :headers="filteredHeaders"
             :items="items"
             :items-length="totalItems"
             :loading="loading"
@@ -139,13 +145,17 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
-    </v-card>
+        </v-card>
+    </v-container>
 </template>
 
 <script setup lang="ts">
-import {CrudFilters, CrudFiltersAction, CrudRefreshButton, CrudSearch, useCrud} from '@drax/crud-vue'
+import {CrudFilters, CrudFiltersAction, CrudRefreshButton, CrudSearch, useCrud, CrudSavedQueriesButton} from '@drax/crud-vue'
+import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterButton.vue'
+import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
+import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
 import {formatDateTime} from '@drax/common-front'
-import {computed, onMounted, ref} from 'vue'
+import {onMounted, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useAuthStore} from '@drax/identity-vue'
@@ -165,7 +175,8 @@ const {t} = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const {prepareFilters, filters, applyFilters, clearFilters, doPaginate, items, itemsPerPage, loading, page, search, sortBy, totalItems} = useCrud(ServiceCrud.instance)
+const {prepareFilters, filters, applyFilters, clearFilters, doPaginate, items, itemsPerPage, loading, page, search, sortBy, totalItems, isDynamicFiltersEnable} = useCrud(ServiceCrud.instance)
+const {filteredHeaders} = useCrudColumns(ServiceCrud.instance)
 const tasks = ref<Record<string, ServiceTask[]>>({})
 const taskLoading = ref<Record<string, boolean>>({})
 const nodeNames = ref<Record<string, string>>({})
@@ -176,7 +187,6 @@ const restartResults = ref<ServiceRestartViewResult[]>([])
 const removeDialog = ref(false)
 const removing = ref(false)
 const removeResults = ref<ServiceRemoveViewResult[]>([])
-const headers = computed(() => ServiceCrud.instance.headers.map((header) => ({...header, title: t(`service.field.${header.title}`)})))
 prepareFilters()
 const stack = route.query.stack
 if (typeof stack === 'string') {
