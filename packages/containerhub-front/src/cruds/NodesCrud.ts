@@ -2,6 +2,7 @@ import {EntityCrud} from '@drax/crud-vue'
 import {restGet} from '@/rest'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {withClientCsvExport} from './clientCsvExport'
+import {applyClientFieldFilters} from './clientFieldFilters'
 
 export type Node = {
     id?: string; hostname?: string; ip?: string; role?: string
@@ -20,6 +21,7 @@ const nodesProvider: IDraxCrudProvider<Node, never, never> = withClientCsvExport
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<Node>> {
         let items = await restGet<Node[]>('/api/docker/nodes')
         if (options.search) items = items.filter(item => matchesSearch(item as unknown as Record<string, unknown>, options.search!))
+        items = applyClientFieldFilters(items, options.filters)
         if (options.orderBy) {
             const key = options.orderBy as keyof Node
             const direction = options.order === 'desc' ? -1 : 1

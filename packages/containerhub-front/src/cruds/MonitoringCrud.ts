@@ -63,6 +63,14 @@ class MonitoringCrud extends EntityCrud {
             {name: 'collectionType', type: 'enum', label: 'collectionType', default: null, operator: 'eq', enum: ['replic', 'global']}
         ]
     }
+    override get fields(): IEntityCrud['fields'] {
+        return [
+            {name: 'serviceName', type: 'string', label: 'service', default: null},
+            {name: 'status', type: 'enum', label: 'status', default: null, enum: ['monitoring', 'paused']},
+            {name: 'type', type: 'enum', label: 'type', default: null, enum: ['calendar', 'permanent']},
+            {name: 'collectionType', type: 'enum', label: 'collectionType', default: null, enum: ['replic', 'global']}
+        ]
+    }
     override get isCreatable(): boolean { return false }
     override get isEditable(): boolean { return false }
     override get isViewable(): boolean { return false }

@@ -2,6 +2,7 @@ import {EntityCrud} from '@drax/crud-vue'
 import {restGet} from '@/rest'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {withClientCsvExport} from './clientCsvExport'
+import {applyClientFieldFilters} from './clientFieldFilters'
 
 type ServiceStack = {stack: string | null}
 export type StackSummary = {name: string; services: number}
@@ -19,6 +20,7 @@ const stacksProvider: IDraxCrudProvider<StackSummary, never, never> = withClient
         }
         let items: StackSummary[] = [...counts].map(([name, serviceCount]) => ({name, services: serviceCount}))
         if (options.search) items = items.filter(item => matchesSearch(item, options.search!))
+        items = applyClientFieldFilters(items, options.filters)
         const orderBy = options.orderBy ?? 'name'
         const direction = options.order === 'desc' ? -1 : 1
         items.sort((a, b) => {

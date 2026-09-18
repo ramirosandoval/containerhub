@@ -2,6 +2,7 @@ import {EntityCrud} from '@drax/crud-vue'
 import {restGet} from '@/rest'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {withClientCsvExport} from './clientCsvExport'
+import {applyClientFieldFilters} from './clientFieldFilters'
 
 export type GhostContainer = {Created: number; Image?: string; Status?: string; Id?: string; NodeID?: string}
 
@@ -14,6 +15,7 @@ const ghostContainersProvider: IDraxCrudProvider<GhostContainer, never, never> =
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<GhostContainer>> {
         let items = await restGet<GhostContainer[]>('/api/docker/ghostContainers')
         if (options.search) items = items.filter(item => matchesSearch(item, options.search!))
+        items = applyClientFieldFilters(items, options.filters)
         if (options.orderBy) {
             const key = options.orderBy as keyof GhostContainer
             const direction = options.order === 'desc' ? -1 : 1

@@ -14,7 +14,17 @@ interface PaginatedTaskMonitorizations {
 
 const taskMonitorizationProvider: IDraxCrudProvider<ITaskMonitorization, never, never> = {
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<ITaskMonitorization>> {
-        const response = await restGet<PaginatedTaskMonitorizations>('/api/task-monitorizations', {page: options.page, limit: options.limit})
+        const filters = (options.filters ?? []).filter(({field, operator, value}) =>
+            field && (operator === 'empty' || (value !== null && value !== undefined && value !== '')),
+        )
+        const response = await restGet<PaginatedTaskMonitorizations>('/api/task-monitorizations', {
+            page: options.page,
+            limit: options.limit,
+            orderBy: options.orderBy || 'date',
+            order: options.order || 'desc',
+            search: options.search || '',
+            filters: filters.length ? JSON.stringify(filters) : '',
+        })
         return {items: response.items, total: response.total, page: response.page, limit: response.limit}
     }
 }

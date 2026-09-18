@@ -118,6 +118,8 @@ class ServiceCrud extends EntityCrud {
             {name: 'id', type: 'string', label: 'id', default: ''},
             {name: 'name', type: 'string', label: 'name', default: ''},
             {name: 'stack', type: 'string', label: 'stack', default: null},
+            {name: 'image', type: 'string', label: 'image', default: null},
+            {name: 'ports', type: 'string', label: 'ports', default: null},
             {name: 'createdAt', type: 'date', label: 'createdAt', default: null},
             {name: 'updatedAt', type: 'date', label: 'updatedAt', default: null},
         ]

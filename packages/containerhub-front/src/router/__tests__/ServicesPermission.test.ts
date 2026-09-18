@@ -45,6 +45,9 @@ test('custom operational tables wire native Drax filters and selectable columns'
         assert.match(page, /:striped="\w+Crud\.instance\.tableStriped"/)
     }
     assert.match(automaticFilters, /:auto-filter="true"/)
+    assert.match(automaticFilters, /CrudFiltersDynamic/)
+    assert.match(automaticFilters, /<crud-filters-dynamic/)
+    assert.match(automaticFilters, /setDynamicFilters\(\[\]\)/)
     assert.match(automaticFilters, /crud-filters-actions__clear-button/)
     assert.doesNotMatch(automaticFilters, /crud-filters-actions__apply-button/)
 })

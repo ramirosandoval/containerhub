@@ -1,8 +1,8 @@
 import {EntityCrud} from '@drax/crud-vue'
 import {restGet} from '@/rest'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
-import {filterNetworks, networkFiltersFromDrax} from '@/pages/networkFilters'
 import {withClientCsvExport} from './clientCsvExport'
+import {applyClientFieldFilters} from './clientFieldFilters'
 
 export type Network = {
     Id: string
@@ -32,11 +32,20 @@ function matchesSearch(item: Network, search: string): boolean {
     ].some(val => typeof val === 'string' && val.toLowerCase().includes(lower))
 }
 
+function networkFilterValue(network: Network, field: string): unknown {
+    if (field === 'name') return network.Name
+    if (field === 'created') return network.Created
+    if (field === 'driver') return network.Driver
+    if (field === 'attachable') return network.Attachable
+    if (field === 'subnet') return network.IPAM?.Config?.[0]?.Subnet
+    return undefined
+}
+
 const networksProvider: IDraxCrudProvider<Network, never, never> = withClientCsvExport<Network, never, never>({
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<Network>> {
         let items = await restGet<Network[]>('/api/docker/network')
         if (options.search) items = items.filter(item => matchesSearch(item, options.search!))
-        items = filterNetworks(items, networkFiltersFromDrax(options.filters)) as Network[]
+        items = applyClientFieldFilters(items, options.filters, networkFilterValue)
         if (options.orderBy) {
             const key = options.orderBy as string
             const direction = options.order === 'desc' ? -1 : 1
@@ -90,13 +99,11 @@ class NetworksCrud extends EntityCrud {
     override get actionHeaders(): IEntityCrud['actionHeaders'] { return [] }
     override get fields(): IEntityCrud['fields'] {
         return [
-            {name: 'Name', type: 'string', label: 'Name', default: ''},
-            {name: 'Created', type: 'string', label: 'Created', default: ''},
-            {name: 'Driver', type: 'string', label: 'Driver', default: ''},
-            {name: 'Attachable', type: 'boolean', label: 'Attachable', default: false},
-            {name: 'IPAM.Driver', type: 'string', label: 'IPAM Driver', default: ''},
-            {name: 'subnet', type: 'string', label: 'Subnet', default: ''},
-            {name: 'gateway', type: 'string', label: 'Gateway', default: ''}
+            {name: 'name', type: 'string', label: 'name', default: ''},
+            {name: 'created', type: 'date', label: 'created', default: null},
+            {name: 'driver', type: 'string', label: 'driver', default: ''},
+            {name: 'attachable', type: 'boolean', label: 'attachable', default: false},
+            {name: 'subnet', type: 'string', label: 'subnet', default: ''}
         ]
     }
 

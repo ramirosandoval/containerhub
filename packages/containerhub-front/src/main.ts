@@ -6,11 +6,13 @@ import {HttpGqlClientFactory, HttpRestClientFactory} from '@drax/common-front'
 import {installI18n} from '@/plugins/i18n'
 import {vuetify} from '@/plugins/vuetify'
 import {router} from '@/router'
+import {setupEntities} from '@/setup/SetupEntities'
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 
 const app = createApp(App)
 installPinia(app)
+setupEntities()
 
 const authStore = useAuthStore()
 if (authStore.accessToken) {

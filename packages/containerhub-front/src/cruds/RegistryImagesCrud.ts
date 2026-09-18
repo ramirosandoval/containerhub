@@ -2,6 +2,7 @@ import {EntityCrud} from '@drax/crud-vue'
 import {restGet} from '@/rest'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {withClientCsvExport} from './clientCsvExport'
+import {applyClientFieldFilters} from './clientFieldFilters'
 
 export type RegistryImage = {name: string; tags: string[] | null}
 
@@ -17,6 +18,7 @@ const registryImagesProvider: IDraxCrudProvider<RegistryImage, never, never> = w
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<RegistryImage>> {
         let items = await restGet<RegistryImage[]>('/api/registry/image')
         if (options.search) items = items.filter(item => matchesSearch(item, options.search!))
+        items = applyClientFieldFilters(items, options.filters)
         if (options.orderBy) {
             const key = options.orderBy as keyof RegistryImage
             const direction = options.order === 'desc' ? -1 : 1

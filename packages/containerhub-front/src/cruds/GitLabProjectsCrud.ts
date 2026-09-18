@@ -58,6 +58,7 @@ class GitLabProjectsCrud extends EntityCrud {
     override get searchEnable(): boolean { return false }
     override get containerFluid(): boolean { return true }
     override get filtersEnable(): boolean { return false }
+    override get dynamicFiltersEnable(): boolean { return false }
     override get filterButtons(): boolean { return false }
     override get filters(): IEntityCrud['filters'] { return [] }
 }
