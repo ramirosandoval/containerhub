@@ -1,56 +1,79 @@
 import {expect, test, type Page} from '@playwright/test'
 
-const username = process.env.CONTAINERHUB_E2E_USERNAME
-const password = process.env.CONTAINERHUB_E2E_PASSWORD
 const metadataTimeout = 15_000
 
-if (!username || !password) {
-    throw new Error('CONTAINERHUB_E2E_USERNAME and CONTAINERHUB_E2E_PASSWORD are required')
+async function authenticate(page: Page): Promise<void> {
+    const accessToken = [
+        Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
+        Buffer.from(JSON.stringify({exp: 4_102_444_800})).toString('base64url'),
+        'browser-tab-test'
+    ].join('.')
+
+    await page.addInitScript(({token}) => {
+        localStorage.setItem('AuthStore', JSON.stringify({
+            accessToken: token,
+            authUser: {
+                username: 'browser-tab-test',
+                role: {
+                    permissions: [
+                        'DOCKER_VIEW',
+                        'DOCKER_NODES_FETCH',
+                        'DOCKER_NETWORK_VIEW',
+                        'DOCKER_LOGS',
+                        'DOCKER_TERMINAL'
+                    ]
+                }
+            }
+        }))
+    }, {token: accessToken})
 }
 
-async function signIn(page: Page): Promise<void> {
-    await page.goto('/services')
-    await expect(page).toHaveTitle('Iniciar Sesión', {timeout: metadataTimeout})
-    await page.locator('#username-input').fill(username)
-    await page.locator('#password-input').fill(password)
-    await page.getByRole('button', {name: 'Iniciar Sesión'}).click()
-    await expect(page).toHaveURL(/\/services$/)
-    await expect(page).toHaveTitle('Servicios', {timeout: metadataTimeout})
-}
-
-async function faviconPathname(page: Page): Promise<string> {
-    return page.evaluate(() => {
+async function loadedFaviconPathname(page: Page): Promise<string> {
+    return page.evaluate(async () => {
         const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
-        return link ? new URL(link.href).pathname : ''
+        if (!link) return ''
+
+        const image = new Image()
+        image.src = link.href
+        await image.decode()
+        return image.naturalWidth > 0 && image.naturalHeight > 0
+            ? new URL(link.href).pathname
+            : ''
     })
 }
 
 test('updates the browser title from the active section', async ({page}) => {
-    await signIn(page)
+    await authenticate(page)
+
+    await page.goto('/services')
+    await expect(page).toHaveTitle('Servicios', {timeout: metadataTimeout})
 
     await page.goto('/')
     await expect(page).toHaveTitle('ContainerHub', {timeout: metadataTimeout})
 })
 
-test('updates and resets the favicon from the active section', async ({page}) => {
-    await signIn(page)
-    await expect.poll(() => faviconPathname(page)).toBe('/favicon.ico')
+test('matches the favicon to the active section and resets it on home', async ({page}) => {
+    await authenticate(page)
 
     const sections = [
-        {path: '/cluster', title: 'Información de swarm', favicon: '/information.svg'},
+        {path: '/services', title: 'Servicios', favicon: '/favicons/mdi-docker.svg'},
+        {path: '/nodes', title: 'Nodos swarm', favicon: '/favicons/mdi-server-network.svg'},
+        {path: '/ghost-containers', title: 'Contenedores fantasma', favicon: '/favicons/mdi-ghost.svg'},
+        {path: '/gitlab-projects', title: 'Proyectos GitLab', favicon: '/favicons/mdi-gitlab.svg'},
+        {path: '/cluster', title: 'Información de swarm', favicon: '/favicons/mdi-server-network.svg'},
         {path: '/statistics/missing-task', title: 'Estadísticas de tarea', favicon: '/poll.svg'},
-        {path: '/inspect/missing-task', title: 'Inspección de tarea', favicon: '/information.svg'},
-        {path: '/logs/missing-task?service=test-service', title: 'Logs de tarea', favicon: '/file-document.svg'},
+        {path: '/inspect/missing-task', title: 'Inspección de tarea', favicon: '/file-document.svg'},
+        {path: '/logs/missing-task?service=test-service', title: 'Logs de tarea', favicon: '/favicon.ico'},
         {path: '/terminal/missing-task', title: 'Terminal de tarea', favicon: '/console.svg'},
     ]
 
     for (const section of sections) {
         await page.goto(section.path)
         await expect(page).toHaveTitle(section.title, {timeout: metadataTimeout})
-        await expect.poll(() => faviconPathname(page)).toBe(section.favicon)
+        await expect.poll(() => loadedFaviconPathname(page)).toBe(section.favicon)
     }
 
-    await page.goto('/services')
-    await expect(page).toHaveTitle('Servicios', {timeout: metadataTimeout})
-    await expect.poll(() => faviconPathname(page)).toBe('/favicon.ico')
+    await page.goto('/')
+    await expect(page).toHaveTitle('ContainerHub', {timeout: metadataTimeout})
+    await expect.poll(() => loadedFaviconPathname(page)).toBe('/favicon.ico')
 })

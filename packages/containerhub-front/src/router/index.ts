@@ -3,6 +3,7 @@ import {useAuthStore} from '@drax/identity-vue'
 import {AuthHelper} from '@drax/identity-front'
 import {createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw} from 'vue-router'
 import {i18n} from '@/plugins/i18n'
+import {getIconForRouteName} from '@/navigation'
 
 const appRoutes: RouteRecordRaw[] = [
     {
@@ -63,7 +64,7 @@ const appRoutes: RouteRecordRaw[] = [
         path: '/cluster',
         name: 'cluster',
         component: () => import('@/pages/ClusterInformationPage.vue'),
-        meta: {title: 'cluster.title', favicon: '/information.svg', requiresAuth: true, permission: 'DOCKER_VIEW'}
+        meta: {title: 'cluster.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
     },
     {
         path: '/registry-images',
@@ -87,7 +88,7 @@ const appRoutes: RouteRecordRaw[] = [
         path: '/inspect/:taskId',
         name: 'task-inspect',
         component: () => import('@/pages/services/TaskInspectPage.vue'),
-        meta: {title: 'taskInspect.title', favicon: '/information.svg', requiresAuth: true, permission: 'DOCKER_VIEW'}
+        meta: {title: 'taskInspect.title', favicon: '/file-document.svg', requiresAuth: true, permission: 'DOCKER_VIEW'}
     },
     {
         path: '/statistics/:taskId',
@@ -99,7 +100,7 @@ const appRoutes: RouteRecordRaw[] = [
         path: '/logs/:taskId',
         name: 'task-logs',
         component: () => import('@/pages/logs/TaskLogsPage.vue'),
-        meta: {title: 'taskLogs.title', favicon: '/file-document.svg', requiresAuth: true, permission: 'DOCKER_LOGS'}
+        meta: {title: 'taskLogs.title', requiresAuth: true, permission: 'DOCKER_LOGS'}
     },
     {
         path: '/terminal/:taskId',
@@ -139,11 +140,16 @@ router.afterEach((to) => {
         ? i18n.global.t(to.meta.title)
         : 'ContainerHub'
 
+    const sectionIcon = typeof to.name === 'string' && to.name !== 'home'
+        ? getIconForRouteName(to.name)
+        : null
     const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
     if (favicon) {
-        favicon.href = typeof to.meta.favicon === 'string'
-            ? to.meta.favicon
-            : '/favicon.ico'
+        favicon.href = sectionIcon
+            ? `/favicons/${sectionIcon}.svg`
+            : typeof to.meta.favicon === 'string'
+                ? to.meta.favicon
+                : '/favicon.ico'
     }
 })
 
