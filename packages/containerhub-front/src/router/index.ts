@@ -63,7 +63,7 @@ const appRoutes: RouteRecordRaw[] = [
         path: '/cluster',
         name: 'cluster',
         component: () => import('@/pages/ClusterInformationPage.vue'),
-        meta: {title: 'cluster.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+        meta: {title: 'cluster.title', favicon: '/information.svg', requiresAuth: true, permission: 'DOCKER_VIEW'}
     },
     {
         path: '/registry-images',
@@ -87,25 +87,25 @@ const appRoutes: RouteRecordRaw[] = [
         path: '/inspect/:taskId',
         name: 'task-inspect',
         component: () => import('@/pages/services/TaskInspectPage.vue'),
-        meta: {title: 'taskInspect.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+        meta: {title: 'taskInspect.title', favicon: '/information.svg', requiresAuth: true, permission: 'DOCKER_VIEW'}
     },
     {
         path: '/statistics/:taskId',
         name: 'task-statistics',
         component: () => import('@/pages/services/TaskStatisticsPage.vue'),
-        meta: {title: 'taskStatistics.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
+        meta: {title: 'taskStatistics.title', favicon: '/poll.svg', requiresAuth: true, permission: 'DOCKER_VIEW'}
     },
     {
         path: '/logs/:taskId',
         name: 'task-logs',
         component: () => import('@/pages/logs/TaskLogsPage.vue'),
-        meta: {title: 'taskLogs.title', requiresAuth: true, permission: 'DOCKER_LOGS'}
+        meta: {title: 'taskLogs.title', favicon: '/file-document.svg', requiresAuth: true, permission: 'DOCKER_LOGS'}
     },
     {
         path: '/terminal/:taskId',
         name: 'task-terminal',
         component: () => import('@/pages/services/TaskTerminalPage.vue'),
-        meta: {title: 'taskTerminal.title', requiresAuth: true, permission: 'DOCKER_TERMINAL'}
+        meta: {title: 'taskTerminal.title', favicon: '/console.svg', requiresAuth: true, permission: 'DOCKER_TERMINAL'}
     },
     {
         path: '/settings',
@@ -138,6 +138,13 @@ router.afterEach((to) => {
     document.title = typeof to.meta.title === 'string'
         ? i18n.global.t(to.meta.title)
         : 'ContainerHub'
+
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+    if (favicon) {
+        favicon.href = typeof to.meta.favicon === 'string'
+            ? to.meta.favicon
+            : '/favicon.ico'
+    }
 })
 
 function loginDestination(to: RouteLocationNormalized): string {
