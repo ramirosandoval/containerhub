@@ -32,6 +32,16 @@ test('SQLite settings and task lifecycle repositories persist with the Drax iden
         }
         await lifecycle.createDoc(event)
         await lifecycle.createDoc({...event, taskId: 'task-2', date: new Date('2026-09-16T10:00:00.000Z')})
+        const filtered = await lifecycle.paginate({
+            page: 1,
+            limit: 10,
+            orderBy: 'date',
+            order: 'desc',
+            search: 'stack',
+            filters: [{field: 'taskId', operator: 'ne', value: 'task-1'}]
+        })
+        assert.equal(filtered.total, 1)
+        assert.equal(filtered.items[0]?.taskId, 'task-2')
         await lifecycle.purgeOld(1)
         assert.equal(await lifecycle.count(), 1)
         assert.equal((await lifecycle.getRecent(1))[0]?.taskId, 'task-2')

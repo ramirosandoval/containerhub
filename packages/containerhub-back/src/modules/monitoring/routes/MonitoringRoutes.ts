@@ -14,14 +14,15 @@ const readPermission = 'DOCKER_VIEW'
 const createPermission = 'DOCKER_MONITORING_CREATE'
 const pausePermission = 'DOCKER_MONITORING_PAUSE'
 const deletePermission = 'DOCKER_MONITORING_DELETE'
+const filterScalarSchema = z.union([z.string(), z.number(), z.boolean()])
 const monitoringFiltersSchema = z.preprocess(value => {
     if (value === undefined || value === '') return []
     if (typeof value !== 'string') return value
     try { return JSON.parse(value) } catch { return value }
 }, z.array(z.object({
     field: z.enum(['serviceName', 'status', 'type', 'collectionType']),
-    operator: z.enum(['eq', 'like']),
-    value: z.union([z.string(), z.number(), z.boolean()])
+    operator: z.enum(['eq', 'like', 'empty', 'ne', 'gt', 'lt', 'gte', 'lte', 'in', 'nin']),
+    value: z.union([filterScalarSchema, z.array(filterScalarSchema), z.null()])
 }).strict()))
 const querySchema = z.object({
     page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(10),

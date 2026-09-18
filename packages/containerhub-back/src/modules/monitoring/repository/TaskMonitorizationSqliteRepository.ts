@@ -18,11 +18,6 @@ export class TaskMonitorizationSqliteRepository extends AbstractSqliteRepository
         return await Promise.all(rows.map((row: any) => this.prepareItem(row)))
     }
 
-    async getPaginated(skip: number, limit: number): Promise<ITaskMonitorization[]> {
-        const rows = this.db.prepare(`SELECT * FROM ${this.tableName} ORDER BY date DESC LIMIT ? OFFSET ?`).all(limit, skip)
-        return await Promise.all(rows.map((row: any) => this.prepareItem(row)))
-    }
-
     async count(): Promise<number> {
         const result = this.db.prepare(`SELECT count(1) AS count FROM ${this.tableName}`).get()
         return result.count

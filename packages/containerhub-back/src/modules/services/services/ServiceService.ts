@@ -34,13 +34,17 @@ type DockerTaskWithLogs = DockerTask & {
     logs(options: DockerTaskLogOptions): Promise<Buffer | NodeJS.ReadableStream>
 }
 
-type ServiceFilterOperator = 'like' | 'gte' | 'lte' | 'eq'
-type ServiceFilterValue = string | number | boolean
+type ServiceFilterOperator = 'eq' | 'like' | 'empty' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'in' | 'nin'
+type ServiceFilterScalar = string | number | boolean
+type ServiceFilterValue = ServiceFilterScalar | ServiceFilterScalar[]
 type ServiceField = 'id' | 'name' | 'stack' | 'createdAt' | 'updatedAt'
 type ServiceFilterField = ServiceField | 'image' | 'ports'
 
 const SERVICE_FILTER_FIELDS = new Set<string>([
     'id', 'name', 'stack', 'image', 'ports', 'createdAt', 'updatedAt'
+])
+const SERVICE_FILTER_OPERATORS = new Set<ServiceFilterOperator>([
+    'eq', 'like', 'empty', 'ne', 'gt', 'lt', 'gte', 'lte', 'in', 'nin'
 ])
 
 export type ServiceFilter = {
@@ -179,11 +183,12 @@ export function parseServiceFilters(raw: unknown): ServiceFilter[] {
         const field = parseServiceFilterField(candidate.field, index)
         const operator = candidate.operator
         const value = candidate.value
-        if (typeof operator !== 'string' || !['like', 'gte', 'lte', 'eq'].includes(operator)) {
+        if (typeof operator !== 'string' || !SERVICE_FILTER_OPERATORS.has(operator as ServiceFilterOperator)) {
             throw new Error(`filter at index ${index} has invalid operator "${String(operator)}"`)
         }
-        if (value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
-            throw new Error(`filter at index ${index} value must be string, number, boolean or null`)
+        const validScalar = (item: unknown) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+        if (value !== null && !validScalar(value) && !(Array.isArray(value) && value.every(validScalar))) {
+            throw new Error(`filter at index ${index} value must be string, number, boolean, an array of those values, or null`)
         }
         return {field, operator: operator as ServiceFilterOperator, value: value as ServiceFilterValue | null}
     })
@@ -208,7 +213,7 @@ function buildDockerListFilters({stack, filters}: ServiceListFilterOptions = {})
     const labels: string[] = []
     if (stack) labels.push(`com.docker.stack.namespace=${stack}`)
     for (const filter of filters ?? []) {
-        if (filter.field === 'stack' && filter.value) labels.push(`com.docker.stack.namespace=${String(filter.value)}`)
+        if (filter.field === 'stack' && filter.operator === 'eq' && filter.value) labels.push(`com.docker.stack.namespace=${String(filter.value)}`)
     }
     return labels.length ? {filters: {label: labels}} : {}
 }
@@ -225,28 +230,47 @@ export function serviceOrderValue(service: ServiceModel, orderBy: string): strin
     }
 }
 
-function matchesServiceFilters(service: ServiceModel, filters: ServiceFilter[] = []): boolean {
+function serviceFilterValue(service: ServiceModel, field: ServiceFilterField): unknown {
+    if (field === 'image') return service.image.nameWithTag
+    if (field === 'ports') return service.ports.map((port) => `${port.hostPort}:${port.containerPort}`).join(',')
+    return service[field]
+}
+
+function isEmptyFilterValue(value: unknown): boolean {
+    return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
+}
+
+function equalFilterValue(actual: unknown, expected: ServiceFilterScalar): boolean {
+    return String(actual ?? '') === String(expected)
+}
+
+function compareFilterValue(actual: unknown, expected: ServiceFilterScalar, field: ServiceFilterField): number {
+    if (field === 'createdAt' || field === 'updatedAt') {
+        return Date.parse(String(actual ?? '')) - Date.parse(String(expected))
+    }
+    return String(actual ?? '').localeCompare(String(expected), undefined, {numeric: true, sensitivity: 'base'})
+}
+
+export function matchesServiceFilters(service: ServiceModel, filters: ServiceFilter[] = []): boolean {
     return filters.every((filter) => {
-        if (filter.value === null || filter.value === undefined || filter.value === '') return true
+        const actual = serviceFilterValue(service, filter.field)
+        if (filter.operator === 'empty') return isEmptyFilterValue(actual)
+        if (isEmptyFilterValue(filter.value)) return true
 
-        const value = filter.field === 'image'
-            ? service.image.nameWithTag
-            : filter.field === 'ports'
-                ? service.ports.map((port) => `${port.hostPort}:${port.containerPort}`).join(',')
-                : service[filter.field]
+        const expectedValues = Array.isArray(filter.value) ? filter.value : [filter.value as ServiceFilterScalar]
+        if (filter.operator === 'in') return expectedValues.some((expected) => equalFilterValue(actual, expected))
+        if (filter.operator === 'nin') return expectedValues.every((expected) => !equalFilterValue(actual, expected))
+        const expected = expectedValues[0]
+        if (filter.operator === 'eq') return equalFilterValue(actual, expected)
+        if (filter.operator === 'ne') return !equalFilterValue(actual, expected)
+        if (filter.operator === 'like') return String(actual ?? '').toLowerCase().includes(String(expected).toLowerCase())
 
-        if (filter.operator === 'like') {
-            return String(value ?? '').toLowerCase().includes(String(filter.value).toLowerCase())
-        }
-
-        if (filter.operator === 'gte' || filter.operator === 'lte') {
-            const serviceTime = Date.parse(String(value ?? ''))
-            const filterTime = Date.parse(String(filter.value))
-            if (Number.isNaN(serviceTime) || Number.isNaN(filterTime)) return false
-            return filter.operator === 'gte' ? serviceTime >= filterTime : serviceTime <= filterTime
-        }
-
-        return String(value ?? '') === String(filter.value)
+        const comparison = compareFilterValue(actual, expected, filter.field)
+        if (Number.isNaN(comparison)) return false
+        if (filter.operator === 'gt') return comparison > 0
+        if (filter.operator === 'gte') return comparison >= 0
+        if (filter.operator === 'lt') return comparison < 0
+        return comparison <= 0
     })
 }
 

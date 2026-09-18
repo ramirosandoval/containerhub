@@ -5,15 +5,11 @@ export class TaskMonitorizationMongoRepository extends AbstractMongoRepository<I
     constructor() {
         super()
         this._model = TaskMonitorizationModel as any
-        this._searchFields = []
+        this._searchFields = ['taskId', 'serviceName']
     }
 
     async getRecent(limit: number): Promise<ITaskMonitorization[]> {
         return await TaskMonitorizationModel.find().sort({date: -1}).limit(limit)
-    }
-
-    async getPaginated(skip: number, limit: number): Promise<ITaskMonitorization[]> {
-        return await TaskMonitorizationModel.find().sort({date: -1}).skip(skip).limit(limit)
     }
 
     async count(): Promise<number> {

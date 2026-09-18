@@ -54,6 +54,18 @@ test('monitoring configurations persist, skip duplicates, search, pause/resume a
         const filteredResponse = await server.inject({url: `/api/monitoring-configurations?page=1&limit=5&filters=${pausedFilter}`, headers})
         assert.equal(filteredResponse.json().total, 1, filteredResponse.body)
         assert.equal(filteredResponse.json().items[0].status, 'paused')
+        const dynamicFilters = [
+            {filters: [{field: 'serviceName', operator: 'like', value: 'API'}], total: 1},
+            {filters: [{field: 'status', operator: 'ne', value: 'monitoring'}], total: 1},
+            {filters: [{field: 'collectionType', operator: 'in', value: ['replic']}], total: 2},
+        ]
+        for (const {filters, total} of dynamicFilters) {
+            const response = await server.inject({url: `/api/monitoring-configurations?page=1&limit=5&filters=${encodeURIComponent(JSON.stringify(filters))}`, headers})
+            assert.equal(response.statusCode, 200, response.body)
+            assert.equal(response.json().total, total, response.body)
+        }
+        const emptyFilter = encodeURIComponent(JSON.stringify([{field: 'status', operator: 'empty', value: null}]))
+        assert.equal((await server.inject({url: `/api/monitoring-configurations?filters=${emptyFilter}`, headers})).statusCode, 200)
         assert.equal((await server.inject({url: '/api/monitoring-configurations?filters=not-json', headers})).statusCode, 400)
         const unknownFilter = encodeURIComponent(JSON.stringify([{field: 'unknown', operator: 'eq', value: 'paused'}]))
         assert.equal((await server.inject({url: `/api/monitoring-configurations?filters=${unknownFilter}`, headers})).statusCode, 400)

@@ -2,11 +2,11 @@ import {COMMON, CommonConfig, DraxConfig} from '@drax/common-back'
 import {TaskMonitorizationMongoRepository} from '../repository/TaskMonitorizationMongoRepository.js'
 import {TaskMonitorizationSqliteRepository} from '../repository/TaskMonitorizationSqliteRepository.js'
 import type {ITaskMonitorization} from '../models/TaskMonitorization.js'
+import type {IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 
 export interface ITaskMonitorizationRepository {
     getRecent(limit: number): Promise<ITaskMonitorization[]>
-    getPaginated(skip: number, limit: number): Promise<ITaskMonitorization[]>
-    count(): Promise<number>
+    paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<ITaskMonitorization>>
     createDoc(data: ITaskMonitorization): Promise<ITaskMonitorization>
     purgeOld(maxQuantity: number): Promise<void>
 }
