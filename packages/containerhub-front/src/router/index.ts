@@ -2,6 +2,7 @@ import {IdentityRoutes} from '@drax/identity-vue'
 import {useAuthStore} from '@drax/identity-vue'
 import {AuthHelper} from '@drax/identity-front'
 import {createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw} from 'vue-router'
+import {i18n} from '@/plugins/i18n'
 
 const appRoutes: RouteRecordRaw[] = [
     {
@@ -131,6 +132,12 @@ const draxRoutes = [...IdentityRoutes]
 export const router = createRouter({
     history: createWebHistory(),
     routes: [...appRoutes, ...draxRoutes]
+})
+
+router.afterEach((to) => {
+    document.title = typeof to.meta.title === 'string'
+        ? i18n.global.t(to.meta.title)
+        : 'ContainerHub'
 })
 
 function loginDestination(to: RouteLocationNormalized): string {
