@@ -79,6 +79,27 @@ test('update service sends Docker version with legacy resource and rollout polic
     assert.equal(auditRecords[0]?.action, 'UPDATE')
 })
 
+test('update service accepts the legacy partial wire shape without changing its meaning', async () => {
+    await updateService('service-1', {
+        command: '/usr/local/bin/start',
+        limits: {
+            CPULimit: null,
+            memoryLimit: null,
+            CPUReservation: 250_000_000,
+            memoryReservation: null
+        },
+        ports: [{hostPort: 5353, containerPort: 5353, portsProtocol: 'UDP'}]
+    } as never, mutationContext)
+
+    const serviceSpec = updatedServiceSpecs.at(-1)
+    const taskTemplate = serviceSpec?.TaskTemplate
+    assert.ok(taskTemplate && 'ContainerSpec' in taskTemplate)
+    assert.equal(taskTemplate.ContainerSpec?.Image, 'alpine:3.20')
+    assert.deepEqual(taskTemplate.ContainerSpec?.Command, ['/usr/local/bin/start'])
+    assert.deepEqual(taskTemplate.Resources, {Reservations: {NanoCPUs: 250_000_000}})
+    assert.deepEqual(serviceSpec?.EndpointSpec?.Ports, [{PublishedPort: 5353, TargetPort: 5353, Protocol: 'udp'}])
+})
+
 test('update service rejects malformed input before inspecting Docker', async () => {
     const lookupsBeforeValidation = serviceLookups
 

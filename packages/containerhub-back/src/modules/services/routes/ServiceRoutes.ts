@@ -9,7 +9,7 @@ import type {ServiceFilter, TaskLogFilters} from '../services/ServiceService.js'
 import {registerNetworkMutation, serviceMutationContext} from '../services/ServiceMutationAudit.js'
 import {
     createFiles, createFolders, createNetwork, createService, dockerRemove, dockerRemoveMany, dockerRestart, dockerRestartMany, fetchGhostContainers,
-    fetchClusterSummary,
+    fetchClusterSummary, fetchImageStatus,
     fetchNodeAndTasks,
     fetchDockerVersion, fetchLogs, fetchNetwork, fetchNetworks, fetchNodes, fetchService, fetchServiceStats, fetchTaskInspect, fetchTaskLogs, fetchTaskStats, fetchTasks,
     findServiceByIdOrName, findServiceTag, getOrCreateNetwork, paginateServices, parseServiceFilters, removeNetwork,
@@ -104,11 +104,12 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
     })
     fastify.post('/api/docker/service/restart/:service', protectedRoute(DockerPermissions.Restart), async (request: any) => dockerRestart(request.params.service, serviceMutationContext(request)))
     fastify.post('/api/docker/service/restart', protectedRoute(DockerPermissions.Restart), async (request: any) => dockerRestartMany(request.body?.serviceIds, serviceMutationContext(request)))
-    fastify.delete('/api/docker/service/:service', protectedRoute(DockerPermissions.Remove), async (request: any) => dockerRemove(request.params.service, serviceMutationContext(request)))
+    fastify.delete('/api/docker/service/:service', protectedRoute(DockerPermissions.Remove), async (request: any) => (await dockerRemove(request.params.service, serviceMutationContext(request))).message)
     fastify.post('/api/docker/service/remove', protectedRoute(DockerPermissions.Remove), async (request: any) => dockerRemoveMany(request.body?.serviceIds, serviceMutationContext(request)))
     fastify.get('/api/docker/service/id/:serviceId/stats', protectedRoute(DockerPermissions.View), async (request: any) => fetchServiceStats(request.params.serviceId))
     fastify.get('/api/docker/service/:serviceName/stats', protectedRoute(DockerPermissions.View), async (request: any) => fetchServiceStats(request.params.serviceName))
     fastify.get('/api/docker/service/:name/tag', protectedRoute(DockerPermissions.View), async (request: any) => findServiceTag(request.params.name))
+    fastify.get('/api/docker/service/status/:image', protectedRoute(DockerPermissions.View), async (request: any) => fetchImageStatus(request.params.image))
     fastify.get('/api/docker/service/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => findServiceByIdOrName(request.params.serviceIdentifier))
 
     fastify.get<{Params: {taskId: string}}>('/api/docker/task/:taskId/inspect', {

@@ -14,6 +14,7 @@ import {MediaRoutes} from '@drax/media-back'
 import multipart from '@fastify/multipart'
 import {typeDefs, resolvers} from './GraphQLSchema.js'
 import YogaFastifyServer from '../servers/YogaFastifyServer.js'
+import {promoteBearerApiKey} from './AuthenticationHeaders.js'
 
 type OpenApiRouteSchema = FastifySchema & {
     params?: unknown
@@ -107,6 +108,7 @@ export default function YogaFastifyServerFactory() {
     server.fastify.register(websocket)
     server.fastify.addHook('onRequest', ((request: any, _reply: any, done: () => void) => {
         setWebSocketAuthorizationHeader(request)
+        promoteBearerApiKey(request.headers)
         done()
     }) as any)
     server.fastify.decorateRequest('authUser', null)

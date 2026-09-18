@@ -67,6 +67,13 @@ test('accepts a Drax user API key for a protected route and rejects it after del
         })
         assert.equal(apiKeyResponse.statusCode, 200)
 
+        const legacyBearerApiKeyResponse = await server.fastify.inject({
+            method: 'GET',
+            url: '/api/services/health',
+            headers: {authorization: `Bearer ${createdApiKey.secret}`}
+        })
+        assert.equal(legacyBearerApiKeyResponse.statusCode, 200)
+
         const anonymousResponse = await server.fastify.inject({method: 'GET', url: '/api/services/health'})
         assert.equal(anonymousResponse.statusCode, 401)
 
@@ -91,6 +98,13 @@ test('accepts a Drax user API key for a protected route and rejects it after del
             headers: {'x-api-key': createdApiKey.secret}
         })
         assert.equal(revokedKeyResponse.statusCode, 401)
+
+        const revokedLegacyBearerResponse = await server.fastify.inject({
+            method: 'GET',
+            url: '/api/services/health',
+            headers: {authorization: `Bearer ${createdApiKey.secret}`}
+        })
+        assert.equal(revokedLegacyBearerResponse.statusCode, 401)
     } finally {
         await server?.fastify.close()
         process.env = previousEnvironment

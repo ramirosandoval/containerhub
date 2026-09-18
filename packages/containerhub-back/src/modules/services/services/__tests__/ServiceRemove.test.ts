@@ -112,6 +112,22 @@ test('remove selected accepts one service through the bulk route', async () => {
     }
 })
 
+test('single remove route returns the legacy scalar message', async () => {
+    const fastify = await removeServer()
+    try {
+        const response = await fastify.inject({
+            method: 'DELETE',
+            url: '/api/docker/service/healthy-service',
+            headers: {authorization: 'Bearer remove-user'}
+        })
+
+        assert.equal(response.statusCode, 200)
+        assert.equal(response.body, 'Service healthy-service removed')
+    } finally {
+        await fastify.close()
+    }
+})
+
 test('remove selected requires DOCKER_REMOVE', async () => {
     const fastify = await removeServer()
     try {

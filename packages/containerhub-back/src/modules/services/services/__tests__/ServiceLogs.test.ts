@@ -28,10 +28,13 @@ class DockerStub {
 }
 
 const dockerodeMock = mock.module('dockerode', {defaultExport: DockerStub})
+const settingsMock = mock.module('../../../settings/services/SettingsService.js', {namedExports: {
+    SettingsService: {getSettings: async () => ({maxLogsLines: 10_000})}
+}})
 const {fetchLogs} = await import('../ServiceService.js')
 const {default: ServiceRoutes} = await import('../../routes/ServiceRoutes.js')
 
-test.after(() => dockerodeMock.restore())
+test.after(() => { dockerodeMock.restore(); settingsMock.restore() })
 
 test.beforeEach(() => {
     dockerCalls.taskIds.length = 0

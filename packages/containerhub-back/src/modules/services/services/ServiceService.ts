@@ -1,13 +1,15 @@
 import Docker from 'dockerode'
-import {mkdir, writeFile} from 'node:fs/promises'
+import {constants} from 'node:fs'
+import {lstat, mkdir, open, realpath, stat} from 'node:fs/promises'
 import path from 'node:path'
 import type {Duplex} from 'node:stream'
 import {z} from 'zod'
 import {mapInspectToServiceModel, type ServiceModel} from '../helpers/mapInspectToServiceModel.js'
+import {parseDockerImageReference} from '../helpers/parseDockerImageReference.js'
 import {registerServiceMutation, type ServiceMutationContext} from './ServiceMutationAudit.js'
 import {connectTaskAgentTerminal} from './AgentTerminalClient.js'
 import {createAgentHealthClient} from './AgentHealthClient.js'
-import {normalizeContainerStats} from './ContainerStats.js'
+import {legacyContainerStats, normalizeContainerStats} from './ContainerStats.js'
 
 type DockerServiceListOptions = import('dockerode').ServiceListOptions
 type DockerServiceSpec = import('dockerode').ServiceSpec
@@ -91,29 +93,36 @@ const DockerHealthcheckInputSchema = z.object({
     Timeout: z.number().finite().optional(), Retries: z.number().int().optional(),
     StartPeriod: z.number().finite().optional()
 }).strict()
+const NullishFiniteNumberSchema = z.number().finite().nullable().optional()
+const CommandInputSchema = z.union([
+    z.string().min(1),
+    z.array(z.string().min(1))
+])
+const PortInputSchema = z.object({
+    protocol: z.string().optional(), portsProtocol: z.string().optional(),
+    hostPort: z.number().int().optional(), publishedPort: z.number().int().optional(),
+    containerPort: z.number().int().optional(), targetPort: z.number().int().optional()
+})
 const ServiceInputSchema = z.object({
     name: z.string().min(1),
     image: z.string().min(1),
     stack: z.string().nullable().optional(),
     labels: z.array(NamedValueInputSchema).optional(),
-    command: z.array(z.string()).optional(),
+    command: CommandInputSchema.optional(),
     envs: z.array(NamedValueInputSchema).optional(),
     volumes: z.array(VolumeInputSchema).optional(),
     dns: z.array(z.string()).optional(),
     extraHosts: z.array(z.string()).optional(),
     healthcheck: z.union([DockerHealthcheckInputSchema, LegacyHealthcheckInputSchema]).optional(),
     limits: z.object({
-        CPULimit: z.number().finite().optional(), memoryLimit: z.number().finite().optional(),
-        CPUReservation: z.number().finite().optional(), memoryReservation: z.number().finite().optional()
+        CPULimit: NullishFiniteNumberSchema, memoryLimit: NullishFiniteNumberSchema,
+        CPUReservation: NullishFiniteNumberSchema, memoryReservation: NullishFiniteNumberSchema
     }).optional(),
     constraints: z.array(z.object({name: z.string().min(1), operation: z.string(), value: z.string()})).optional(),
     preferences: z.array(z.object({value: z.string().optional()})).optional(),
     deployMode: z.enum(['global', 'replicated', 'replic']).optional(),
     replicas: z.number().int().min(0).optional(),
-    ports: z.array(z.object({
-        protocol: z.string().optional(), hostPort: z.number().int().optional(), publishedPort: z.number().int().optional(),
-        containerPort: z.number().int().optional(), targetPort: z.number().int().optional()
-    })).optional(),
+    ports: z.array(PortInputSchema).optional(),
     networks: z.array(NetworkInputSchema).optional()
 }).strict()
 
@@ -135,16 +144,20 @@ type PaginateServicesOptions = {
     filters?: ServiceFilter[]
 }
 
-type FolderInput = {
-    hostPath?: string
-    path?: string
-}
-
-type FileInput = {
-    fileName?: string
-    fileContent?: string | NodeJS.ArrayBufferView
-    hostPath?: string
-}
+const FolderInputSchema = z.union([
+    z.string().min(1),
+    z.object({hostPath: z.string().min(1).optional(), path: z.string().min(1).optional()})
+        .refine((folder) => Boolean(folder.hostPath ?? folder.path), {message: 'Folder path is required'})
+])
+const FolderInputsSchema = z.array(FolderInputSchema)
+const FileInputSchema = z.object({
+    fileName: z.string().min(1),
+    fileContent: z.any().refine((value) => value !== undefined, {message: 'fileContent is required'}),
+    hostPath: z.string().min(1)
+}).passthrough()
+const FileInputsSchema = z.array(FileInputSchema)
+type FolderInput = z.infer<typeof FolderInputSchema>
+type FileInput = z.infer<typeof FileInputSchema>
 
 type NetworkUpdateInput = Partial<DockerNetworkCreateOptions>
 
@@ -277,13 +290,22 @@ export async function findServiceById(serviceId: string): Promise<ServiceModel> 
     return mapInspectToServiceModel(inspected)
 }
 
+function isDockerNotFound(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'statusCode' in error
+        && (error as {statusCode?: unknown}).statusCode === 404
+}
+
 export async function findServiceByIdOrName(identifier: string): Promise<ServiceModel> {
     try {
         return await findServiceById(identifier)
-    } catch {
+    } catch (error) {
+        if (!isDockerNotFound(error)) throw error
         const services = await fetchService()
         const service = services.find((item) => item.name === identifier)
-        if (!service) throw new Error('Service not found')
+        if (!service) {
+            const {NotFoundError} = await import('@drax/common-back')
+            throw new NotFoundError(`Service ${identifier}`)
+        }
         return service
     }
 }
@@ -291,6 +313,11 @@ export async function findServiceByIdOrName(identifier: string): Promise<Service
 export async function findServiceTag(name: string): Promise<string | null> {
     const service = await findServiceByIdOrName(name)
     return service.image.tag
+}
+
+export async function fetchImageStatus(image: string): Promise<{status: 'useful' | 'useless'}> {
+    const services = await fetchService()
+    return {status: services.some(service => service.image.fullname === image) ? 'useful' : 'useless'}
 }
 
 function labelsToObject(labels: LabelInput[] = []): Record<string, string> {
@@ -344,6 +371,21 @@ function toContainerHealthcheck(healthcheck: ContainerHealthcheck | LegacyHealth
     }
 }
 
+function toServiceResources(limits: NonNullable<ServiceInput['limits']>): DockerContainerTaskSpec['Resources'] {
+    const dockerLimits = {
+        ...(limits.CPULimit != null ? {NanoCPUs: limits.CPULimit} : {}),
+        ...(limits.memoryLimit != null ? {MemoryBytes: limits.memoryLimit} : {})
+    }
+    const dockerReservations = {
+        ...(limits.CPUReservation != null ? {NanoCPUs: limits.CPUReservation} : {}),
+        ...(limits.memoryReservation != null ? {MemoryBytes: limits.memoryReservation} : {})
+    }
+    return {
+        ...(Object.keys(dockerLimits).length ? {Limits: dockerLimits} : {}),
+        ...(Object.keys(dockerReservations).length ? {Reservations: dockerReservations} : {})
+    }
+}
+
 function toServiceNetworks(networkInputs: NetworkInput[] | undefined, stack: string | undefined, serviceName: string, previousTaskTemplate?: DockerContainerTaskSpec, previousServiceNetworks?: DockerNetworkAttachment[]): DockerNetworkAttachment[] | undefined {
     if (networkInputs === undefined && (previousTaskTemplate?.Networks ?? previousServiceNetworks)) {
         return previousTaskTemplate?.Networks ?? previousServiceNetworks
@@ -378,7 +420,7 @@ function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): Docke
         ContainerSpec: {
             ...container,
             Image: input.image ?? container.Image,
-            Command: input.command ?? container.Command,
+            Command: typeof input.command === 'string' ? [input.command] : input.command ?? container.Command,
             Env: input.envs ? input.envs.map((env) => `${env.name}=${env.value ?? ''}`) : container.Env,
             Labels: {...(container.Labels ?? {}), ...labelsToObject(input.labels)},
             Mounts: input.volumes ? input.volumes.map(toMountSettings) : container.Mounts,
@@ -394,10 +436,7 @@ function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): Docke
             Constraints: input.constraints?.map((constraint) => `${constraint.name} ${constraint.operation} ${constraint.value}`),
             Preferences: input.preferences?.map((preference) => ({Spread: {SpreadDescriptor: preference.value ?? ''}}))
         } : previous?.TaskTemplate?.Placement,
-        Resources: input.limits ? {
-            Limits: {NanoCPUs: input.limits.CPULimit, MemoryBytes: input.limits.memoryLimit},
-            Reservations: {NanoCPUs: input.limits.CPUReservation, MemoryBytes: input.limits.memoryReservation}
-        } : previous?.TaskTemplate?.Resources,
+        Resources: input.limits ? toServiceResources(input.limits) : previous?.TaskTemplate?.Resources,
         RestartPolicy: {Condition: 'on-failure', Delay: 10_000_000_000, MaxAttempts: 10},
         Networks: toServiceNetworks(input.networks, stack, name, previousContainerTask, previousServiceNetworks)
     }
@@ -420,7 +459,7 @@ function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): Docke
         } as DockerServiceSpec['RollbackConfig'],
         EndpointSpec: input.ports ? {
             Ports: input.ports.map((port) => ({
-                Protocol: toServicePortProtocol(port.protocol),
+                Protocol: toServicePortProtocol(port.protocol ?? port.portsProtocol),
                 PublishedPort: asServicePort(port.hostPort ?? port.publishedPort),
                 TargetPort: asServicePort(port.containerPort ?? port.targetPort)
             }))
@@ -594,46 +633,7 @@ function getContainerId(record: unknown): string | undefined {
 }
 
 export function getImageObject(inputImage = '') {
-    const fullname = /@/.test(inputImage) ? inputImage.split("@")[0] : inputImage
-    const imageSplited = fullname.split("/")
-
-    let id = /@/.test(inputImage) ? inputImage.split("@")[1].split(":")[1] : ''
-    let name = ''
-    let nameWithTag = ''
-    let namespace = ''
-    let domain = ''
-    let tag = ''
-
-    switch (imageSplited.length) {
-        case 1:
-            nameWithTag = imageSplited[0]
-            name = nameWithTag.split(":")[0]
-            tag = nameWithTag.split(":")[1]
-            break
-        case 2:
-            nameWithTag = imageSplited[1]
-            name = nameWithTag.split(":")[0]
-            tag = nameWithTag.split(":")[1]
-            domain = imageSplited[0]
-            break
-        case 3:
-            nameWithTag = imageSplited[2]
-            name = nameWithTag.split(":")[0]
-            tag = nameWithTag.split(":")[1]
-            namespace = imageSplited[1]
-            domain = imageSplited[0]
-            break
-    }
-
-    return {
-        id,
-        fullname,
-        domain,
-        namespace,
-        name,
-        tag,
-        nameWithTag
-    }
+    return parseDockerImageReference(inputImage)
 }
 
 export type ServiceTaskModel = {
@@ -712,7 +712,8 @@ export async function fetchServiceStats(serviceIdentifier: string) {
 async function taskStatistics(task: DockerTask) {
     const stats = await fetchTaskContainerStats(task)
     try {
-        return {task: toServiceTaskModel(task), stats, metrics: stats === null ? null : normalizeContainerStats(stats)}
+        const metrics = stats === null ? null : normalizeContainerStats(stats)
+        return {task: toServiceTaskModel(task), stats: metrics === null ? null : legacyContainerStats(stats, metrics), metrics}
     } catch {
         throw Object.assign(new Error(`Invalid container stats for task ${getOptionalField(task, 'ID') ?? 'unknown'}`), {statusCode: 503})
     }
@@ -1026,19 +1027,162 @@ export async function fetchGhostContainers(): Promise<GhostContainer[]> {
     })
 }
 
-function safeDataPath(hostPath: string, fileName?: string): string {
-    const root = process.env.DOCKER_DATA_PATH
-    if (!root) throw new Error('DOCKER_DATA_PATH must be configured')
-
-    const target = path.resolve(root, hostPath.replace(/^[/\\]+/, ''), fileName ?? '')
-    if (target !== path.resolve(root) && !target.startsWith(`${path.resolve(root)}${path.sep}`)) {
-        throw new Error('Invalid host path')
-    }
-    return target
+function isPathInside(target: string, root: string): boolean {
+    return target === root || target.startsWith(`${root}${path.sep}`)
 }
 
-export async function createFolders(folders: FolderInput[]): Promise<{success: true}> {
-    if (!Array.isArray(folders)) throw new Error('Request body must be an array')
+function configuredHostVolumeRoots(): string[] {
+    const configuredRoots = process.env.CONTAINERHUB_HOST_VOLUME_ROOTS
+        ?.split(',')
+        .map((root) => root.trim())
+        .filter(Boolean)
+    const roots = configuredRoots?.length ? configuredRoots : [process.env.DOCKER_DATA_PATH?.trim() ?? '']
+    if (!roots.length || roots.some((root) => !path.isAbsolute(root))) {
+        throw new Error('CONTAINERHUB_HOST_VOLUME_ROOTS must contain absolute paths')
+    }
+    return [...new Set(roots.map((root) => path.resolve(root)))]
+}
+
+async function existingRealPath(target: string): Promise<string> {
+    let candidate = target
+    while (true) {
+        try {
+            return await realpath(candidate)
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            const parent = path.dirname(candidate)
+            if (parent === candidate) throw new Error('Invalid host path')
+            candidate = parent
+        }
+    }
+}
+
+async function rejectSymlinkComponents(root: string, target: string): Promise<void> {
+    let candidate = root
+    for (const component of path.relative(root, target).split(path.sep).filter(Boolean)) {
+        candidate = path.join(candidate, component)
+        try {
+            if ((await lstat(candidate)).isSymbolicLink()) throw new Error('Invalid host path')
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+            throw error
+        }
+    }
+}
+
+function protectedDatabasePaths(): string[] {
+    const dockerDataPath = process.env.DOCKER_DATA_PATH?.trim()
+    const databasePaths = [
+        process.env.DRAX_SQLITE_FILE?.trim(),
+        dockerDataPath && path.join(dockerDataPath, 'containerhub.sqlite')
+    ].filter((databasePath): databasePath is string => Boolean(databasePath && path.isAbsolute(databasePath)))
+    return [...new Set(databasePaths.map((databasePath) => path.resolve(databasePath)))]
+}
+
+async function isDatabaseFile(target: string, databasePaths: string[]): Promise<boolean> {
+    for (const databasePath of databasePaths) {
+        if (target === databasePath) return true
+        try {
+            const [targetStats, databaseStats] = await Promise.all([stat(target), stat(databasePath)])
+            if (targetStats.dev === databaseStats.dev && targetStats.ino === databaseStats.ino) return true
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+    }
+    return false
+}
+
+type SafeDataPath = {root: string; target: string}
+
+async function safeDataPath(hostPath: string, fileName?: string): Promise<SafeDataPath> {
+    const dockerDataPath = process.env.DOCKER_DATA_PATH?.trim()
+    const target = path.isAbsolute(hostPath)
+        ? path.resolve(hostPath, fileName ?? '')
+        : dockerDataPath
+            ? path.resolve(dockerDataPath, hostPath, fileName ?? '')
+            : (() => { throw new Error('DOCKER_DATA_PATH must be configured for relative host paths') })()
+    const root = configuredHostVolumeRoots().find((candidate) => isPathInside(target, candidate))
+    if (!root) throw new Error('Invalid host path')
+
+    if (await isDatabaseFile(target, protectedDatabasePaths())) throw new Error('Cannot overwrite ContainerHub database file')
+
+    const [realRoot, realExistingPath] = await Promise.all([
+        realpath(root),
+        existingRealPath(target),
+        rejectSymlinkComponents(root, target)
+    ])
+    if (!isPathInside(realExistingPath, realRoot)) throw new Error('Invalid host path')
+
+    return {root, target}
+}
+
+function isNodeError(error: unknown, code: string): boolean {
+    return typeof error === 'object' && error !== null && 'code' in error && (error as {code?: string}).code === code
+}
+
+async function openSecureDirectory(root: string, target: string) {
+    const relative = path.relative(root, target)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`Invalid host volume path: ${target}`)
+    let directory = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+    try {
+        for (const segment of relative.split(path.sep).filter(Boolean)) {
+            const child = `/proc/self/fd/${directory.fd}/${segment}`
+            try {
+                await mkdir(child)
+            } catch (error) {
+                if (!isNodeError(error, 'EEXIST')) throw error
+            }
+            const next = await open(child, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+            await directory.close()
+            directory = next
+        }
+        return directory
+    } catch (error) {
+        await directory.close().catch(() => undefined)
+        throw error
+    }
+}
+
+async function writeSecureFile(root: string, target: string, content: string) {
+    const directory = await openSecureDirectory(root, path.dirname(target))
+    const filePath = `/proc/self/fd/${directory.fd}/${path.basename(target)}`
+    let file
+    try {
+        try {
+            file = await open(filePath, constants.O_WRONLY | constants.O_NOFOLLOW)
+        } catch (error) {
+            if (!isNodeError(error, 'ENOENT')) throw error
+            try {
+                file = await open(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o666)
+            } catch (createError) {
+                if (!isNodeError(createError, 'EEXIST')) throw createError
+                file = await open(filePath, constants.O_WRONLY | constants.O_NOFOLLOW)
+            }
+        }
+        const dockerDataPath = process.env.DOCKER_DATA_PATH?.trim()
+        if (dockerDataPath) {
+            const candidate = await file.stat()
+            try {
+                const database = await stat(path.resolve(dockerDataPath))
+                if (candidate.dev === database.dev && candidate.ino === database.ino) throw new Error(`Refusing to overwrite ContainerHub database file: ${target}`)
+            } catch (error) {
+                if (!isNodeError(error, 'ENOENT')) throw error
+            }
+        }
+        await file.truncate(0)
+        await file.writeFile(content)
+    } finally {
+        await file?.close().catch(() => undefined)
+        await directory.close().catch(() => undefined)
+    }
+}
+
+function folderHostPath(folder: FolderInput): string {
+    return typeof folder === 'string' ? folder : folder.hostPath ?? folder.path!
+}
+
+export async function createFolders(folders: unknown): Promise<{success: true}> {
+    const validatedFolders = await parseServiceInput(FolderInputsSchema, folders)
 
     const dockerInfo = await docker.info()
     const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
@@ -1046,21 +1190,22 @@ export async function createFolders(folders: FolderInput[]): Promise<{success: t
 
     await Promise.all(nodes.map(async (node) => {
         if (node.id === localNodeId) {
-            await Promise.all(folders.map((folder) => mkdir(safeDataPath(folder.hostPath ?? folder.path ?? ''), {recursive: true})))
+            await Promise.all(validatedFolders.map(async (folder) => {
+                const {root, target} = await safeDataPath(folderHostPath(folder))
+                const directory = await openSecureDirectory(root, target)
+                await directory.close()
+            }))
         } else {
-            try {
-                if (agentHealthClient && node.id) await agentHealthClient.createFolders(node.id, folders)
-            } catch (error) {
-                console.error(`Failed to create folders on node ${node.id}:`, error)
-            }
+            if (!agentHealthClient || !node.id) throw new Error(`No agent is available for node ${node.id}`)
+            await agentHealthClient.createFolders(node.id, validatedFolders)
         }
     }))
 
     return {success: true}
 }
 
-export async function createFiles(files: FileInput[]): Promise<{message: string}> {
-    if (!Array.isArray(files)) throw new Error('Request body must be an array')
+export async function createFiles(files: unknown): Promise<{message: string}> {
+    const validatedFiles = await parseServiceInput(FileInputsSchema, files)
 
     const dockerInfo = await docker.info()
     const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
@@ -1068,20 +1213,13 @@ export async function createFiles(files: FileInput[]): Promise<{message: string}
 
     await Promise.all(nodes.map(async (node) => {
         if (node.id === localNodeId) {
-            await Promise.all(files.map(async (file) => {
-                if (!file.fileName || file.fileContent === undefined || !file.hostPath) {
-                    throw new Error('fileName, fileContent and hostPath are required')
-                }
-                const filePath = safeDataPath(file.hostPath, file.fileName)
-                await mkdir(path.dirname(filePath), {recursive: true})
-                await writeFile(filePath, file.fileContent)
+            await Promise.all(validatedFiles.map(async (file) => {
+                const {root, target} = await safeDataPath(file.hostPath, file.fileName)
+                await writeSecureFile(root, target, file.fileContent)
             }))
         } else {
-            try {
-                if (agentHealthClient && node.id) await agentHealthClient.createFiles(node.id, files)
-            } catch (error) {
-                console.error(`Failed to create files on node ${node.id}:`, error)
-            }
+            if (!agentHealthClient || !node.id) throw new Error(`No agent is available for node ${node.id}`)
+            await agentHealthClient.createFiles(node.id, validatedFiles)
         }
     }))
 

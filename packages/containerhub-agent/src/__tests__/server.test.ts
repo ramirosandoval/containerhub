@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import {link, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
 import test from 'node:test'
 import {buildAgentServer, readAgentServerConfig} from '../server.js'
 import type Docker from 'dockerode'
@@ -53,8 +56,22 @@ test('agent startup supports the deployed plaintext transport and rejects partia
     }), {
         port: 9997,
         nodeId: 'worker-1',
-        dockerDataPath: '/var/lib/containerhub'
+        dockerDataPath: '/var/lib/containerhub',
+        hostVolumeRoots: ['/var/lib/containerhub']
     })
+    assert.deepEqual(readAgentServerConfig({
+        CONTAINERHUB_AGENT_PORT: '9997',
+        NODE_ID: 'worker-1',
+        CONTAINERHUB_HOST_VOLUME_ROOTS: '/storage,/logs,/storage'
+    }).hostVolumeRoots, ['/storage', '/logs'])
+    assert.throws(
+        () => readAgentServerConfig({
+            CONTAINERHUB_AGENT_PORT: '9997',
+            NODE_ID: 'worker-1',
+            CONTAINERHUB_HOST_VOLUME_ROOTS: 'storage'
+        }),
+        /CONTAINERHUB_HOST_VOLUME_ROOTS/
+    )
     assert.throws(
         () => readAgentServerConfig({
             CONTAINERHUB_AGENT_PORT: '9997',
@@ -63,6 +80,47 @@ test('agent startup supports the deployed plaintext transport and rejects partia
         }),
         /CONTAINERHUB_AGENT_SERVER_CERT_FILE/
     )
+})
+
+test('agent provisions docker-devops host paths only below configured host-volume roots', async () => {
+    const hostVolumeRoot = await mkdtemp(join(tmpdir(), 'containerhub-agent-host-volume-'))
+    const hostPath = join(hostVolumeRoot, 'multichannel', 'mc-web-vue3')
+    const server = buildAgentServer({
+        docker: {ping: async () => 'OK', listContainers: async () => [], getContainer: () => { throw new Error('not used') }},
+        nodeId: 'worker-1',
+        dockerDataPath: hostVolumeRoot,
+        hostVolumeRoots: [hostVolumeRoot]
+    })
+
+    try {
+        assert.equal((await server.inject({method: 'POST', url: '/folders', payload: [hostPath]})).statusCode, 200)
+        assert.equal((await server.inject({
+            method: 'POST', url: '/files',
+            payload: [{
+                hostPath,
+                containerPath: '/usr/share/nginx/html',
+                fileName: 'config.json',
+                fileContent: '{"source":"docker-devops"}'
+            }]
+        })).statusCode, 200)
+        assert.equal(await readFile(join(hostPath, 'config.json'), 'utf8'), '{"source":"docker-devops"}')
+        await symlink(join(hostVolumeRoot, 'missing'), join(hostVolumeRoot, 'dangling-escape'))
+        assert.notEqual((await server.inject({
+            method: 'POST', url: '/files',
+            payload: [{hostPath: join(hostVolumeRoot, 'dangling-escape'), fileName: 'outside.txt', fileContent: 'content'}]
+        })).statusCode, 200)
+        await writeFile(join(hostVolumeRoot, 'containerhub.sqlite'), 'database')
+        await link(join(hostVolumeRoot, 'containerhub.sqlite'), join(hostPath, 'database-hardlink'))
+        assert.notEqual((await server.inject({
+            method: 'POST', url: '/files',
+            payload: [{hostPath, fileName: 'database-hardlink', fileContent: 'overwritten'}]
+        })).statusCode, 200)
+        assert.equal(await readFile(join(hostVolumeRoot, 'containerhub.sqlite'), 'utf8'), 'database')
+        assert.notEqual((await server.inject({method: 'POST', url: '/folders', payload: ['/etc/containerhub-test']})).statusCode, 200)
+    } finally {
+        await server.close()
+        await rm(hostVolumeRoot, {recursive: true, force: true})
+    }
 })
 
 test('agent lists only running containers from its own daemon', async () => {

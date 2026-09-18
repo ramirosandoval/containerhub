@@ -28,7 +28,30 @@ docker push mi-registry.com/containerhub:latest
 docker push mi-registry.com/containerhub-agent:latest
 ```
 
-## 3. Despliegue en Docker Swarm (Local/Producción)
+## 3. Despliegue manual en Docker Swarm
+
+El stack de ejemplo no es requisito operativo: las tres imágenes se pueden desplegar como servicios independientes. Conserva estos roles:
+
+| Servicio | Proceso y placement | Puertos y mounts |
+| --- | --- | --- |
+| `containerhub_app` | `node packages/containerhub-back/dist/index.js` en un manager | publica la API; monta Docker socket, datos y los roots que docker-devops aprovisiona |
+| `containerhub_agent` | `node packages/containerhub-agent/dist/index.js` global en workers | no publica puerto; monta Docker socket, datos y exactamente los mismos roots de host |
+| `containerhub_monitoring` | `node packages/containerhub-back/dist/monitoring.js` en un manager | no publica puerto; no necesita roots de provisioning |
+
+Para que docker-devops pueda crear un archivo de `/storage/...` y montarlo después en un servicio, configura **el mismo valor** y bind mount en `app` y en cada `agent`:
+
+```bash
+--env CONTAINERHUB_HOST_VOLUME_ROOTS=/storage,/logs,/localdata \
+--mount type=bind,src=/storage,dst=/storage
+```
+
+Añade los mounts equivalentes de `/logs` y `/localdata` solo si el entorno permite que docker-devops los use. La allow-list no crea mounts: si un worker no tiene el bind mount, ContainerHub falla el provisioning antes de crear o actualizar el servicio.
+
+Los roots deben ser escribibles solo por el principal que ejecuta ContainerHub/agent; no uses un host path modificable por usuarios o procesos no confiables.
+
+El nombre y el nodo de `containerhub_monitoring` son decisiones de `docker service create`/`update`; el worker no escucha un puerto ni lee esos valores como settings de aplicación.
+
+## 4. Despliegue por stack de ejemplo (Local/Producción)
 
 El archivo `docker-compose.yml` (stack) provisto en la raíz del proyecto está preparado para el entorno Swarm. Utiliza restricciones de ubicación (`node.role == manager` para el backend y `node.role == worker` en modo global para los agentes) e inyecta los secretos requeridos de mTLS.
 
@@ -63,7 +86,7 @@ docker stack deploy -c docker-compose.yml containerhub
 
 ---
 
-## 4. Modo "Legacy/Inseguro" (Sin mTLS)
+## 5. Modo "Legacy/Inseguro" (Sin mTLS)
 
 Por diseño y seguridad, ContainerHub implementa **Mutual TLS (mTLS)** de forma **estricta y hardcodeada** para proteger el socket remoto contra acceso no autorizado, ya que los agentes de Docker exponen permisos que equivalen a acceso de administrador/root en el host. 
 

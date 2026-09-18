@@ -107,9 +107,15 @@ accepted. You can also customize the exposed port using `CONTAINERHUB_PORT`.
 ```bash
 export CONTAINERHUB_ORIGIN=http://127.0.0.1:9998
 export CONTAINERHUB_PORT=9998
+export CONTAINERHUB_STORAGE_ROOT=/storage
 docker stack deploy --resolve-image never -c docker-compose.yml containerhub-test
 docker stack services containerhub-test
 ```
+
+Create `$CONTAINERHUB_STORAGE_ROOT` with the required ownership on every
+manager and worker before deployment. The stack mounts that same absolute path
+into the application and each global agent; provisioning a manager-only path
+does not make a worker bind mount usable.
 
 Use `--with-registry-auth` instead of `--resolve-image never` when the images
 are hosted in an authenticated registry. Open `$CONTAINERHUB_ORIGIN`, sign in

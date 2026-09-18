@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {normalizeContainerStats} from '../ContainerStats.js'
+import {legacyContainerStats, normalizeContainerStats} from '../ContainerStats.js'
 
 const sampledStats = {
     read: '2026-09-05T00:00:00Z',
@@ -40,4 +40,14 @@ test('unavailable samples and reset counters never become fabricated zero usage 
         {readIoBytes: 0, writeIoBytes: 0})
     assert.throws(() => normalizeContainerStats({...sampledStats, networks: {eth0: {rx_bytes: 'bad', tx_bytes: 0}}}))
     assert.throws(() => normalizeContainerStats({...sampledStats, memory_stats: {usage: -1}}))
+})
+
+test('adapts normalized metrics to the legacy stats fields without dropping Docker data', () => {
+    const metrics = normalizeContainerStats(sampledStats)
+    assert.deepEqual(legacyContainerStats(sampledStats, metrics), {
+        ...sampledStats,
+        cpu: '80',
+        memoryUsage: '4096',
+        memoryLimit: '8192'
+    })
 })

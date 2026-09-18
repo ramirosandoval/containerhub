@@ -102,6 +102,42 @@ test('create service converts the legacy health-check seconds to Docker nanoseco
     })
 })
 
+test('create service normalizes the legacy command, nullable limits and UDP protocol', async () => {
+    await createService({
+        name: 'stack_api',
+        image: 'registry.example:5000/team/api:2.4',
+        command: '/usr/local/bin/start',
+        limits: {
+            CPULimit: null,
+            memoryLimit: null,
+            CPUReservation: 250_000_000,
+            memoryReservation: null
+        },
+        ports: [{hostPort: 8080, containerPort: 80, portsProtocol: 'UDP'}]
+    } as never, mutationContext)
+
+    const serviceSpec = createdServiceSpecs.at(-1)
+    const taskTemplate = serviceSpec?.TaskTemplate
+    assert.ok(taskTemplate && 'ContainerSpec' in taskTemplate)
+    assert.deepEqual(taskTemplate.ContainerSpec?.Command, ['/usr/local/bin/start'])
+    assert.deepEqual(taskTemplate.Resources, {Reservations: {NanoCPUs: 250_000_000}})
+    assert.deepEqual(serviceSpec?.EndpointSpec?.Ports, [{
+        PublishedPort: 8080,
+        TargetPort: 80,
+        Protocol: 'udp'
+    }])
+})
+
+test('create service prefers the canonical port protocol over the legacy alias', async () => {
+    await createService({
+        name: 'stack_api',
+        image: 'alpine:3.20',
+        ports: [{hostPort: 8080, containerPort: 80, protocol: 'TCP', portsProtocol: 'UDP'}]
+    } as never, mutationContext)
+
+    assert.equal(createdServiceSpecs.at(-1)?.EndpointSpec?.Ports?.[0]?.Protocol, 'tcp')
+})
+
 test('create service rejects malformed input before calling Docker', async () => {
     const creationsBeforeValidation = createdServiceSpecs.length
 

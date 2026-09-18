@@ -19,6 +19,7 @@ const expectedMetrics = {
     memoryUsage: {memoryTotalUsage: 4096, memoryLimitUsage: 8192},
     ioUsage: {readIoBytes: null, writeIoBytes: null}, networksUsage: []
 }
+const expectedStats = {...sampledStats, cpu: '80', memoryUsage: '4096', memoryLimit: '8192'}
 let workerAvailable = true
 let requestedContainers: string[] = []
 class DockerStub {
@@ -51,15 +52,15 @@ test.after(() => { dockerMock.restore(); agentMock.restore() })
 test.beforeEach(() => { workerAvailable = true; requestedContainers = [] })
 
 test('task stats select the task node while preserving local daemon access', async () => {
-    assert.deepEqual(await fetchTaskStats('worker-task'), {task: workerTaskModel, stats: {id: 'worker-container', ...sampledStats}, metrics: expectedMetrics})
-    assert.deepEqual(await fetchTaskStats('local-task'), {task: localTaskModel, stats: {id: 'local-container', ...sampledStats}, metrics: expectedMetrics})
+    assert.deepEqual(await fetchTaskStats('worker-task'), {task: workerTaskModel, stats: {id: 'worker-container', ...expectedStats}, metrics: expectedMetrics})
+    assert.deepEqual(await fetchTaskStats('local-task'), {task: localTaskModel, stats: {id: 'local-container', ...expectedStats}, metrics: expectedMetrics})
     assert.deepEqual(requestedContainers, ['local-container'])
 })
 
 test('service stats share task routing and preserve null stats for unassigned tasks', async () => {
     assert.deepEqual(await fetchServiceStats('service'), [
-        {task: localTaskModel, stats: {id: 'local-container', ...sampledStats}, metrics: expectedMetrics},
-        {task: workerTaskModel, stats: {id: 'worker-container', ...sampledStats}, metrics: expectedMetrics},
+        {task: localTaskModel, stats: {id: 'local-container', ...expectedStats}, metrics: expectedMetrics},
+        {task: workerTaskModel, stats: {id: 'worker-container', ...expectedStats}, metrics: expectedMetrics},
         {task: unassignedTaskModel, stats: null, metrics: null}
     ])
 })
@@ -79,6 +80,8 @@ test('stats endpoint enforces permission and returns 503 rather than local fallb
         const response = await server.inject({url: '/api/docker/task/worker-task/stats', headers: {authorization: 'Bearer stats-reader'}})
         assert.equal(response.statusCode, 200)
         assert.equal(response.json().stats.id, 'worker-container')
+        assert.deepEqual({cpu: response.json().stats.cpu, memoryUsage: response.json().stats.memoryUsage, memoryLimit: response.json().stats.memoryLimit},
+            {cpu: '80', memoryUsage: '4096', memoryLimit: '8192'})
         assert.deepEqual(response.json().metrics, expectedMetrics)
         for (const servicePath of ['/api/docker/service/id/service/stats', '/api/docker/service/service/stats']) {
             assert.equal((await server.inject(servicePath)).statusCode, 403)

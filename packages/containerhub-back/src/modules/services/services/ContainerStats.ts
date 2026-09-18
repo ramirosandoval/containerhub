@@ -35,3 +35,14 @@ export function normalizeContainerStats(rawStats: unknown) {
         networksUsage: Object.entries(stats.networks ?? {}).map(([network, counters]) => ({network, rxBytes: counters.rx_bytes, txBytes: counters.tx_bytes}))
     }
 }
+
+export function legacyContainerStats(rawStats: unknown, metrics: ReturnType<typeof normalizeContainerStats>) {
+    const raw = typeof rawStats === 'object' && rawStats !== null ? rawStats : {}
+    const legacyValue = (value: number | null) => value === null ? null : String(value)
+    return {
+        ...raw,
+        cpu: legacyValue(metrics.cpuUsage.cpuPercentage),
+        memoryUsage: legacyValue(metrics.memoryUsage.memoryTotalUsage),
+        memoryLimit: legacyValue(metrics.memoryUsage.memoryLimitUsage)
+    }
+}
