@@ -28,6 +28,7 @@ export const menu = [
             {text: 'role.menu', link: {name: 'CrudRole'}, icon: 'mdi-shield-account', gallery: true, permission: 'role:manage'},
             {text: 'userapikey.menu', link: {name: 'CrudUserApiKey'}, icon: 'mdi-table-key', gallery: true, permission: 'userApiKey:manage'},
             {text: 'usersession.menu', link: {name: 'UserSessionCrudPage'}, icon: 'mdi-history', gallery: true, permission: 'usersession:manage'},
+            {text: 'audit.menu', link: {name: 'AuditCrudPage'}, icon: 'mdi-police-badge', gallery: true, permission: 'audit:manage'},
             {text: 'app.settings', link: {name: 'settings'}, icon: 'mdi-cog', gallery: true, permission: 'SETTINGS_SHOW'}
         ]
     }

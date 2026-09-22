@@ -1,4 +1,5 @@
 import {IdentityRoutes} from '@drax/identity-vue'
+import AuditCrudPage from '@drax/audit-vue/src/pages/crud/AuditCrudPage.vue'
 import {useAuthStore} from '@drax/identity-vue'
 import {AuthHelper} from '@drax/identity-front'
 import {createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw} from 'vue-router'
@@ -113,6 +114,12 @@ const appRoutes: RouteRecordRaw[] = [
         name: 'settings',
         component: () => import('@/pages/settings/SettingsPage.vue'),
         meta: {title: 'settings.title', requiresAuth: true, permission: 'SETTINGS_SHOW'}
+    },
+    {
+        path: '/crud/audit',
+        name: 'AuditCrudPage',
+        component: AuditCrudPage,
+        meta: {title: 'audit.menu', requiresAuth: true, permission: 'audit:manage'}
     }
 ]
 

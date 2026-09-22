@@ -9,6 +9,7 @@ const [setupEntities, main] = await Promise.all([
 
 test('registers every ContainerHub CRUD entity for Drax dynamic filters', () => {
     for (const crud of [
+        'AuditCrud',
         'ServiceCrud',
         'MonitoringCrud',
         'NetworksCrud',
