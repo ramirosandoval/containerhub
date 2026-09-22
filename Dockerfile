@@ -20,5 +20,6 @@ COPY --from=build /app/packages/containerhub-back/package.json packages/containe
 COPY --from=build /app/packages/containerhub-back/node_modules packages/containerhub-back/node_modules
 COPY --from=build /app/packages/containerhub-back/dist packages/containerhub-back/dist
 COPY --from=build /app/packages/containerhub-front/dist public
+COPY --chmod=755 docker/containerhub-monitoring /usr/local/bin/containerhub-monitoring
 EXPOSE 9998
 CMD ["node", "packages/containerhub-back/dist/index.js"]
