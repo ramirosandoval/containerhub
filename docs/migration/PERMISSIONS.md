@@ -5,6 +5,7 @@
 | Permission | Current use |
 |---|---|
 | `DOCKER_VIEW` | Services, stacks, ghost page, service/task/stats reads, GitLab and Registry |
+| `DOCKER_CONFIGURATION_VIEW` | Reveal environment and label values only on the legacy Docker service REST contract for trusted integrations |
 | `DOCKER_CREATE` | Service create |
 | `DOCKER_UPDATE` | Service update and local folder/file provisioning |
 | `DOCKER_RESTART` | Service restart, single/bulk |
@@ -18,6 +19,8 @@
 | `DOCKER_NETWORK_REMOVE` | Network delete |
 
 Evidence: `packages/containerhub-back/src/modules/services/permissions/DockerPermissions.ts`, `ServiceRoutes.ts`, `TerminalRoutes.ts`, frontend router/navigation.
+
+No existing editable human role bundle receives `DOCKER_CONFIGURATION_VIEW` automatically. `Admin` receives all registered permissions; the dedicated Docker DevOps machine role must be granted this permission explicitly together with its operation-specific Docker permissions.
 
 ## Legacy Docker permissions
 

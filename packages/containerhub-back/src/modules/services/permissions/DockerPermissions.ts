@@ -1,5 +1,6 @@
 export const DockerPermissions = {
     View: 'DOCKER_VIEW',
+    ConfigurationView: 'DOCKER_CONFIGURATION_VIEW',
     Create: 'DOCKER_CREATE',
     Update: 'DOCKER_UPDATE',
     Restart: 'DOCKER_RESTART',

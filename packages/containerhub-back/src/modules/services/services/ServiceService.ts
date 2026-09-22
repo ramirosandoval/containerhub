@@ -4,7 +4,7 @@ import {lstat, mkdir, open, realpath, stat} from 'node:fs/promises'
 import path from 'node:path'
 import type {Duplex} from 'node:stream'
 import {z} from 'zod'
-import {mapInspectToServiceModel, type ServiceModel} from '../helpers/mapInspectToServiceModel.js'
+import {mapInspectToServiceModel, type ServiceModel, type ServiceReadOptions} from '../helpers/mapInspectToServiceModel.js'
 import {parseDockerImageReference} from '../helpers/parseDockerImageReference.js'
 import {registerServiceMutation, type ServiceMutationContext} from './ServiceMutationAudit.js'
 import {connectTaskAgentTerminal} from './AgentTerminalClient.js'
@@ -204,9 +204,9 @@ function asServiceIdArray(serviceIds: unknown): string[] {
 const docker = new Docker({socketPath: process.env.DOCKER_SOCKET_PATH ?? '/var/run/docker.sock'})
 const agentHealthClient = createAgentHealthClient()
 
-export async function fetchService(stack?: string | null): Promise<ServiceModel[]> {
+export async function fetchService(stack?: string | null, options: ServiceReadOptions = {}): Promise<ServiceModel[]> {
     const dockerServices = await docker.listServices(buildDockerListFilters({stack}))
-    return dockerServices.map((dockerService) => mapInspectToServiceModel(dockerService))
+    return dockerServices.map((dockerService) => mapInspectToServiceModel(dockerService, options))
 }
 
 function buildDockerListFilters({stack, filters}: ServiceListFilterOptions = {}): DockerServiceListOptions {
@@ -308,10 +308,10 @@ export async function paginateServices(opts: PaginateServicesOptions): Promise<{
     return {page: opts.page, limit: opts.limit, total, items}
 }
 
-export async function findServiceById(serviceId: string): Promise<ServiceModel> {
+export async function findServiceById(serviceId: string, options: ServiceReadOptions = {}): Promise<ServiceModel> {
     const inspected = await docker.getService(serviceId).inspect()
     if (!inspected) throw new Error('Service not found')
-    return mapInspectToServiceModel(inspected)
+    return mapInspectToServiceModel(inspected, options)
 }
 
 function isDockerNotFound(error: unknown): boolean {
@@ -319,12 +319,12 @@ function isDockerNotFound(error: unknown): boolean {
         && (error as {statusCode?: unknown}).statusCode === 404
 }
 
-export async function findServiceByIdOrName(identifier: string): Promise<ServiceModel> {
+export async function findServiceByIdOrName(identifier: string, options: ServiceReadOptions = {}): Promise<ServiceModel> {
     try {
-        return await findServiceById(identifier)
+        return await findServiceById(identifier, options)
     } catch (error) {
         if (!isDockerNotFound(error)) throw error
-        const services = await fetchService()
+        const services = await fetchService(undefined, options)
         const service = services.find((item) => item.name === identifier)
         if (!service) {
             const {NotFoundError} = await import('@drax/common-back')
@@ -515,17 +515,17 @@ async function parseServiceInput<T>(schema: z.ZodType<T>, input: unknown): Promi
     }
 }
 
-export async function createService(input: ServiceInput, mutationContext: ServiceMutationContext): Promise<ServiceModel> {
+export async function createService(input: ServiceInput, mutationContext: ServiceMutationContext, options: ServiceReadOptions = {}): Promise<ServiceModel> {
     const validatedInput = await parseServiceInput(ServiceCreateInputSchema, input)
     const serviceSpec = toServiceSpec(validatedInput)
     await ensureServiceNetworks(serviceSpec, validatedInput.stack)
     const created = await docker.createService(serviceSpec)
-    const service = await findServiceById(created.id)
+    const service = await findServiceById(created.id, options)
     await registerServiceMutation('CREATE', service.id, mutationContext)
     return service
 }
 
-export async function updateService(serviceId: string, input: ServiceInput, mutationContext: ServiceMutationContext): Promise<ServiceModel> {
+export async function updateService(serviceId: string, input: ServiceInput, mutationContext: ServiceMutationContext, options: ServiceReadOptions = {}): Promise<ServiceModel> {
     const validatedInput = await parseServiceInput(ServiceUpdateInputSchema, input)
     const service = docker.getService(serviceId)
     const inspected = await service.inspect()
@@ -533,7 +533,7 @@ export async function updateService(serviceId: string, input: ServiceInput, muta
     const serviceSpec = toServiceSpec(validatedInput, currentSpec)
     await ensureServiceNetworks(serviceSpec, validatedInput.stack ?? currentSpec.Labels?.['com.docker.stack.namespace'])
     await service.update({...serviceSpec, version: inspected.Version.Index})
-    const updatedService = await findServiceById(serviceId)
+    const updatedService = await findServiceById(serviceId, options)
     await registerServiceMutation('UPDATE', serviceId, mutationContext)
     return updatedService
 }

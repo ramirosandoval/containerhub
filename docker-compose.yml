@@ -17,7 +17,7 @@ services:
       CONTAINERHUB_HOST_VOLUME_ROOTS: ${CONTAINERHUB_STORAGE_ROOT:-/storage}
       CONTAINERHUB_BOOTSTRAP_ENABLED: ${CONTAINERHUB_BOOTSTRAP_ENABLED:-false}
       CONTAINERHUB_BOOTSTRAP_NAME: ${CONTAINERHUB_BOOTSTRAP_NAME:-containerhub-test}
-      CONTAINERHUB_BOOTSTRAP_USERNAME: ${CONTAINERHUB_BOOTSTRAP_USERNAME:-containerhub-test}
+      CONTAINERHUB_BOOTSTRAP_USERNAME: ${CONTAINERHUB_BOOTSTRAP_USERNAME:-containerhubtest}
       CONTAINERHUB_BOOTSTRAP_EMAIL: ${CONTAINERHUB_BOOTSTRAP_EMAIL:-containerhub-test@example.invalid}
       CONTAINERHUB_BOOTSTRAP_PHONE: ${CONTAINERHUB_BOOTSTRAP_PHONE:-+15555550100}
       TERMINAL_ALLOWED_ORIGIN: ${CONTAINERHUB_ORIGIN:-http://localhost:9998}
@@ -37,8 +37,8 @@ services:
       - containerhub-data:/var/lib/containerhub
       - ${CONTAINERHUB_STORAGE_ROOT:-/storage}:${CONTAINERHUB_STORAGE_ROOT:-/storage}
     ports:
-      - target: 9998
-        published: 9998
+      - target: ${CONTAINERHUB_PORT:-9998}
+        published: ${CONTAINERHUB_PORT:-9998}
         protocol: tcp
         mode: host
     deploy:
@@ -83,7 +83,7 @@ services:
           - node.role == manager
 
   containerhub-agent:
-    image: 192.168.122.1:5000/containerhub-agent:latest
+    image: ${CONTAINERHUB_AGENT_IMAGE:-192.168.122.1:5000/containerhub-agent:latest}
     environment:
       CONTAINERHUB_AGENT_PORT: 9997
       DOCKER_SOCKET_PATH: /var/run/docker.sock

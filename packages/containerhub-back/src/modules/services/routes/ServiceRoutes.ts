@@ -18,6 +18,12 @@ import {
 
 const controller = new CommonController()
 
+function serviceReadOptions(request: any) {
+    return {
+        revealConfiguration: request.rbac?.hasPermission?.(DockerPermissions.ConfigurationView) === true
+    }
+}
+
 function protectedRoute(permission: string, schema: Record<string, unknown> = {}) {
     return {
         preHandler: (request: any) => requirePermission(request, permission),
@@ -87,17 +93,17 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
         })
     })
 
-    fastify.get('/api/docker/service', protectedRoute(DockerPermissions.View), async () => fetchService())
+    fastify.get('/api/docker/service', protectedRoute(DockerPermissions.View), async (request: any) => fetchService(undefined, serviceReadOptions(request)))
     fastify.post('/api/docker/service', protectedRoute(DockerPermissions.Create, {body: z.toJSONSchema(ServiceCreateInputSchema, {target: 'openapi-3.0'})}), async (request: any, reply) => {
         try {
-            return await createService(request.body, serviceMutationContext(request))
+            return await createService(request.body, serviceMutationContext(request), serviceReadOptions(request))
         } catch (error) {
             return controller.handleError(error, reply)
         }
     })
     fastify.put('/api/docker/service/:service', protectedRoute(DockerPermissions.Update, {body: z.toJSONSchema(ServiceUpdateInputSchema, {target: 'openapi-3.0'})}), async (request: any, reply) => {
         try {
-            return await updateService(request.params.service, request.body, serviceMutationContext(request))
+            return await updateService(request.params.service, request.body, serviceMutationContext(request), serviceReadOptions(request))
         } catch (error) {
             return controller.handleError(error, reply)
         }
@@ -110,7 +116,7 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
     fastify.get('/api/docker/service/:serviceName/stats', protectedRoute(DockerPermissions.View), async (request: any) => fetchServiceStats(request.params.serviceName))
     fastify.get('/api/docker/service/:name/tag', protectedRoute(DockerPermissions.View), async (request: any) => findServiceTag(request.params.name))
     fastify.get('/api/docker/service/status/:image', protectedRoute(DockerPermissions.View), async (request: any) => fetchImageStatus(request.params.image))
-    fastify.get('/api/docker/service/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => findServiceByIdOrName(request.params.serviceIdentifier))
+    fastify.get('/api/docker/service/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => findServiceByIdOrName(request.params.serviceIdentifier, serviceReadOptions(request)))
 
     fastify.get<{Params: {taskId: string}}>('/api/docker/task/:taskId/inspect', {
         ...protectedRoute(DockerPermissions.View),

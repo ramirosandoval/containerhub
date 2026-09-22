@@ -12,8 +12,29 @@
 ### Authentication
 
 - Protected REST routes accept either `Authorization: Bearer <JWT>` for the browser session or `X-API-Key: <user API key>` for automation. An API key is an opaque Drax HMAC-backed secret, not a JWT exchange token.
+- UUID-like Drax API keys are also accepted in `Authorization: Bearer <API key>` for the existing Docker DevOps client; ContainerHub promotes that value to the native API-key middleware without changing JWT handling.
 - Both credentials build the same Drax identity/RBAC context, so route permissions and audit actor metadata remain unchanged.
 - API-key deletion/revocation takes effect after the Drax API-key cache TTL; it is not documented as instantaneous. The terminal WebSocket continues to require its one-use ticket, created through an authenticated terminal-session request.
+
+### Docker DevOps consumer compatibility
+
+Docker DevOps continues to read `Environment.dockerApiToken` and send it as `Authorization: Bearer *** For ContainerHub the stored value is a Drax user API-key secret, not a migrated Docker Fortes JWT. The functional API contract requires only changing the Environment's `dockerApiUrl` and `dockerApiToken`; rollout also requires the security-only logging correction described below.
+
+This compatibility keeps Docker DevOps's existing credential storage: `dockerApiToken` is a plaintext Mongoose field, is exposed by its GraphQL `Environment` type and is rendered by its Environment UI. The integration therefore requires HTTPS (or an equivalently isolated private transport), restricted Environment/MongoDB administration and an API-key IP allow-list where the topology provides stable backend addresses. Before rollout, Docker DevOps must also include the logging correction that removes serialization of the `Environment` document, service mutation payload and update response; historical logs created before that correction require restricted access, retention review and API-key rotation if exposure cannot be excluded.
+
+The Docker Fortes token is not copied because its JWT claims and role resolution differ from Drax. Reusing a human Docker DevOps session JWT would additionally require request-token propagation and would not cover background jobs. Shared JWT/SSO federation is outside this provider replacement.
+
+The dedicated integration role requires exactly:
+
+- `DOCKER_VIEW`
+- `DOCKER_CONFIGURATION_VIEW`
+- `DOCKER_CREATE`
+- `DOCKER_UPDATE`
+- `DOCKER_REMOVE`
+- `DOCKER_NODES_FETCH`
+- `DOCKER_NETWORK_VIEW`
+
+`DOCKER_CONFIGURATION_VIEW` reveals environment and label values only on the legacy Docker service list/detail and mutation responses. Without it, those values remain `[REDACTED]`. Native `/api/services`, GraphQL and task inspection remain redacted.
 
 ### Services
 
@@ -21,7 +42,7 @@
 |---|---|---|---|
 | `GET /api/services` | `DOCKER_VIEW` | Full normalized service array | DONE |
 | `GET /api/services/paginate` | `DOCKER_VIEW` | Query `page,limit,orderBy,order,search,stack,filters`; returns `{page,limit,total,items}` | DONE |
-| `GET /api/docker/service/:idOrName` | `DOCKER_VIEW` | Inspect/find | DONE |
+| `GET /api/docker/service` and `/:idOrName` | `DOCKER_VIEW`; `DOCKER_CONFIGURATION_VIEW` to reveal config values | List/inspect/find; env and labels redacted by default | DONE |
 | `POST /api/docker/service` | `DOCKER_CREATE` | Inspected response, task networks/aliases, labeled stack network, health-check, resources and legacy policies | DONE |
 | `PUT /api/docker/service/:service` | `DOCKER_UPDATE` | Live versioned update through the shared create/update mapper with durable audit | DONE |
 | restart/remove single backend | `DOCKER_RESTART` / `DOCKER_REMOVE` | Existing single-service commands with durable audit | DONE |
@@ -38,9 +59,9 @@
 | `GET /api/docker/task/:taskId/logs?tail=` | `DOCKER_LOGS` | Snapshot, tail 1..2000 | DONE |
 | `WS /api/docker/task/:taskId/logs/stream` | `DOCKER_LOGS` | JWT via bearer subprotocol; one filter-start frame | DONE |
 | `GET /api/docker/logs/:stack/:service` | `DOCKER_LOGS` | Snapshot from the first normalized running task; `null` when none is running | DONE |
-| task/service stats | `DOCKER_VIEW` | `{task, stats, metrics}`; local daemon or task-node mTLS agent; remote/invalid sample failure 503; polling chart UI implemented; distinct-worker/browser proof pending | PARTIAL |
+| task/service stats | `DOCKER_VIEW` | `{task, stats, metrics}`; local daemon or task-node agent; remote/invalid sample failure 503; polling chart UI implemented; distinct-worker/browser proof pending | PARTIAL |
 | terminal ticket + local-daemon `WS /api/docker/terminal` | `DOCKER_TERMINAL` | One-use 60s ticket, origin/shell/size/time limits | DONE |
-| terminal against a remote worker | `DOCKER_TERMINAL` | Task-selected binary mTLS agent relay with node/task/container checks; distinct-worker browser proof pending | PARTIAL |
+| terminal against a remote worker | `DOCKER_TERMINAL` | Task-selected binary agent relay with node/task/container checks; distinct-worker browser proof pending | PARTIAL |
 
 Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclude string arrays. Exclusions win. Include entries are AND groups; comma-separated terms within a group are OR. `*` is wildcard; malformed regex falls back to substring.
 
@@ -56,7 +77,7 @@ Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclud
 | Network replace/remove backend | update/remove | DONE |
 | Network mutation audit/safety parity | update/remove | PARTIAL |
 | `GET /api/docker/ghostContainers` local running-container reconciliation | `DOCKER_VIEW` | DONE |
-| Cluster-wide ghost collection through `GET /api/docker/ghostContainers` | `DOCKER_VIEW` | PARTIAL; manager-local plus mTLS worker inventories; `503` instead of an incomplete list when any remote scan fails; second-worker API/browser proof pending |
+| Cluster-wide ghost collection through `GET /api/docker/ghostContainers` | `DOCKER_VIEW` | PARTIAL; manager-local plus worker-agent inventories; `503` instead of an incomplete list when any remote scan fails; second-worker API/browser proof pending |
 | `POST /api/docker/folders` local confined contract | `DOCKER_UPDATE` | DONE |
 | All-node folder provisioning | `DOCKER_UPDATE` | PARTIAL |
 | `POST /api/docker/files` local confined/awaited contract | `DOCKER_UPDATE` | DONE |
@@ -84,8 +105,8 @@ Ghost reconciliation follows Docker Engine API v1.51 [`ContainerList`](https://d
 |---|---|---|
 | Cluster topology | GraphQL node/task aggregate | CLU-01 totals migrated; CLU-02 topology and selectable polling remain missing |
 | Task inspect | GraphQL JSON | Implemented as protected `GET /api/docker/task/:taskId/inspect`; preserves structure while redacting command/args, environment and label values |
-| Agent health | `GET /api/docker/nodes` includes nullable `agentHealthy` | Backend-to-agent `/health` uses mTLS and matches the returned node ID |
-| Agent containers | GraphQL backed by HTTP agent | Implemented `GET /containers/running` over mTLS: `{nodeId, containers}`; node ID and consumed fields validated; 2s deadline and 8 MiB response limit. Authenticated remote ghost reconciliation passed on `debianvm` |
+| Agent health | `GET /api/docker/nodes` includes nullable `agentHealthy` | Backend-to-agent `/health` matches the returned node ID; transport is HTTP by default and supports optional mTLS when all certificate variables are configured |
+| Agent containers | GraphQL backed by HTTP agent | Implemented `GET /containers/running`: `{nodeId, containers}`; node ID and consumed fields validated; 2s deadline and 8 MiB response limit. Authenticated remote ghost reconciliation passed on `debianvm` |
 | Derived stats | REST task/service `metrics` | CPU percentage/core count, total memory bytes, cumulative disk/network bytes; authenticated remote API and four-chart browser proof passed on `debianvm` |
 | Monitoring configuration/history | GraphQL creation/list/actions; unused edit helper | MON-01 configuration REST plus MON-02 protected sample history below; real Docker/database/browser and distinct-worker proof pending |
 | Task lifecycle history | GraphQL list | Define event semantics and retention first |

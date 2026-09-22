@@ -91,6 +91,10 @@ export type ServiceModel = {
     updatedAt: string | null
 }
 
+export type ServiceReadOptions = {
+    revealConfiguration?: boolean
+}
+
 function serviceSpec(item: DockerodeService | DockerServiceItem): DockerServiceSpec {
     if ('Spec' in item) return (item.Spec as unknown as DockerServiceSpec | undefined) ?? {}
     return {}
@@ -102,12 +106,12 @@ function serviceId(item: DockerodeService | DockerServiceItem): string {
     throw new Error('Docker service response is missing ID')
 }
 
-function mapEnvironment(values: string[] = []): Array<{name: string; value: string}> {
+function mapEnvironment(values: string[] = [], revealConfiguration = false): Array<{name: string; value: string}> {
     return values.map(entry => {
         const separator = entry.indexOf('=')
-        return separator === -1
-            ? {name: entry, value: '[REDACTED]'}
-            : {name: entry.slice(0, separator), value: '[REDACTED]'}
+        const name = separator === -1 ? entry : entry.slice(0, separator)
+        const value = separator === -1 ? '' : entry.slice(separator + 1)
+        return {name, value: revealConfiguration ? value : '[REDACTED]'}
     })
 }
 
@@ -139,15 +143,21 @@ function mapHealthCheck(healthCheck: DockerHealthCheck | undefined): ServiceMode
     }
 }
 
-export function mapInspectToServiceModel(item: DockerodeService | DockerServiceItem): ServiceModel {
+export function mapInspectToServiceModel(
+    item: DockerodeService | DockerServiceItem,
+    options: ServiceReadOptions = {}
+): ServiceModel {
     const spec = serviceSpec(item)
     const container = spec.TaskTemplate?.ContainerSpec
     const image = parseDockerImageReference(container?.Image ?? '')
     const serviceLabels = {...(spec.Labels ?? {})}
     const stack = serviceLabels['com.docker.stack.namespace'] ?? null
     delete serviceLabels['com.docker.stack.namespace']
-    const labels = Object.keys({...serviceLabels, ...(container?.Labels ?? {})})
-        .map((name) => ({name, value: '[REDACTED]'}))
+    const configurationLabels = {...serviceLabels, ...(container?.Labels ?? {})}
+    const labels = Object.entries(configurationLabels).map(([name, value]) => ({
+        name,
+        value: options.revealConfiguration ? value : '[REDACTED]'
+    }))
     const portsRaw = spec.EndpointSpec?.Ports ?? []
     const resources = spec.TaskTemplate?.Resources
     const healthCheck = mapHealthCheck(container?.HealthCheck)
@@ -161,7 +171,7 @@ export function mapInspectToServiceModel(item: DockerodeService | DockerServiceI
             const protocol = port.Protocol?.toUpperCase() ?? 'TCP'
             return {hostPort: port.PublishedPort ?? null, containerPort: port.TargetPort ?? null, protocol, portsProtocol: protocol}
         }),
-        envs: mapEnvironment(container?.Env),
+        envs: mapEnvironment(container?.Env, options.revealConfiguration),
         volumes: (container?.Mounts ?? []).map(mount => ({
             type: mount.Type ?? 'bind',
             hostVolume: mount.Source ?? '',

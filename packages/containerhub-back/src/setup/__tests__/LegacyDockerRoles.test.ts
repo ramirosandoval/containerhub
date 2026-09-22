@@ -19,7 +19,7 @@ const expectedBundles: Record<string, string[]> = {
     PM: serviceAccess,
     QA: serviceAccess,
     Soporte: [],
-    Admin: [...serviceManagement, 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_NETWORK_CREATE', 'DOCKER_NETWORK_UPDATE', 'DOCKER_NETWORK_REMOVE', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage']
+    Admin: [...serviceManagement, 'DOCKER_CONFIGURATION_VIEW', 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_NETWORK_CREATE', 'DOCKER_NETWORK_UPDATE', 'DOCKER_NETWORK_REMOVE', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage']
 }
 
 test('startup persists the approved Docker bundles idempotently and enforces their API access', async () => {

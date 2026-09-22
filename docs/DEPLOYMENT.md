@@ -53,24 +53,30 @@ El nombre y el nodo de `containerhub_monitoring` son decisiones de `docker servi
 
 ## 4. Despliegue por stack de ejemplo (Local/Producción)
 
-El archivo `docker-compose.yml` (stack) provisto en la raíz del proyecto está preparado para el entorno Swarm. Utiliza restricciones de ubicación (`node.role == manager` para el backend y `node.role == worker` en modo global para los agentes) e inyecta los secretos requeridos de mTLS.
+El archivo `docker-compose.yml` (stack) provisto en la raíz del proyecto está preparado para el entorno Swarm. Utiliza restricciones de ubicación (`node.role == manager` para el backend y `node.role == worker` en modo global para los agentes).
 
-### Preparación de Secretos
-Antes del primer despliegue, Docker Swarm necesita los certificados en texto plano creados como "secrets". Puedes generarlos o simularlos localmente para desarrollo:
+Para desplegar un candidato paralelo en el puerto 9998 y conservar la opción de reemplazar después el endpoint legacy en 9999:
 
 ```bash
-# Crear secretos dummy (solo para validación local en desarrollo)
-echo "dummy-jwt-secret" | docker secret create containerhub-test-jwt -
-echo "dummy-api-key-secret" | docker secret create containerhub-test-api-key -
-echo "admin123" | docker secret create containerhub-test-bootstrap-password -
+export CONTAINERHUB_PORT=9998
+export CONTAINERHUB_ORIGIN=https://containerhub-dev.example.com
+export CONTAINERHUB_IMAGE=REGISTRY/containerhub:TAG_INMUTABLE
+export CONTAINERHUB_AGENT_IMAGE=REGISTRY/containerhub-agent:TAG_INMUTABLE
+```
 
-# Crear secretos de certificados (mTLS)
-# (En producción, reemplaza estos echos por cat de los verdaderos archivos de certificados x509)
-echo "ca-cert" | docker secret create containerhub-agent-ca.pem -
-echo "server-cert" | docker secret create containerhub-agent-server-cert.pem -
-echo "server-key" | docker secret create containerhub-agent-server-key.pem -
-echo "client-cert" | docker secret create containerhub-agent-client-cert.pem -
-echo "client-key" | docker secret create containerhub-agent-client-key.pem -
+`CONTAINERHUB_PORT` controla el listener, el target y el published port. Termina TLS en el reverse proxy/ingress y configura `CONTAINERHUB_ORIGIN` con la URL HTTPS que usarán los navegadores y Docker DevOps. No envíes la API key ni la configuración revelada por HTTP sobre una red compartida. El acceso HTTP directo se limita a loopback o a una red privada explícitamente aislada durante pruebas desechables. App y agentes deben usar imágenes ya distribuidas o accesibles desde todos los nodos del Swarm.
+
+Si habilitas el bootstrap, `CONTAINERHUB_BOOTSTRAP_USERNAME` debe contener solo letras y números; el valor por defecto del stack es `containerhubtest`.
+
+### Preparación de Secretos
+Antes del primer despliegue, Docker Swarm necesita los tres secretos externos declarados por el stack. Genera valores nuevos; no reutilices credenciales legacy ni versiones valores de ejemplo:
+
+```bash
+openssl rand -hex 32 | docker secret create containerhub-test-jwt -
+openssl rand -hex 32 | docker secret create containerhub-test-api-key -
+read -rsp 'ContainerHub bootstrap password: ' CONTAINERHUB_BOOTSTRAP_PASSWORD; echo
+printf '%s' "$CONTAINERHUB_BOOTSTRAP_PASSWORD" | docker secret create containerhub-test-bootstrap-password -
+unset CONTAINERHUB_BOOTSTRAP_PASSWORD
 ```
 
 ### Ejecución del Despliegue
@@ -84,38 +90,20 @@ docker stack deploy -c docker-compose.yml containerhub
 > [!TIP]
 > Puedes verificar `app`, `monitoring` y `agent` con `docker stack services containerhub`. Para el recolector separado, usa `docker service logs -f containerhub_monitoring`; no publica un puerto ni reemplaza el agente remoto.
 
+### Integración con Docker DevOps
+
+1. Despliega ContainerHub en paralelo y crea un usuario técnico con un rol que contenga solamente `DOCKER_VIEW`, `DOCKER_CONFIGURATION_VIEW`, `DOCKER_CREATE`, `DOCKER_UPDATE`, `DOCKER_REMOVE`, `DOCKER_NODES_FETCH` y `DOCKER_NETWORK_VIEW`.
+2. Genera una API key para ese usuario, limita sus IPv4/IPv6 a las direcciones del backend Docker DevOps cuando la topología lo permita y conserva una copia temporal en el gestor de secretos aprobado para la carga/rotación.
+3. En un Environment DEV de Docker DevOps cambia solamente `dockerApiUrl` por la URL HTTPS y `dockerApiToken` por la API key de ContainerHub. Docker DevOps conserva el header Bearer actual.
+4. Antes del corte, despliega la corrección de Docker DevOps que elimina el logging del documento `Environment`, del payload `serviceData` y de la respuesta de actualización. Verifica que sus logs no contengan `dockerApiToken` ni valores de env/labels.
+5. Trata `dockerApiToken` como una limitación legacy: Docker DevOps lo persiste sin cifrado de campo, lo expone en su GraphQL y lo muestra en las pantallas de Environment. Restringe el CRUD de Environments y el acceso a MongoDB a administradores autorizados; no copies el valor a tickets ni documentación. Restringe, rota y depura los logs históricos según la política de retención porque ejecuciones anteriores a la corrección pueden contener credenciales o configuración.
+6. Valida lecturas y un ciclo create/update/delete desechable antes de apagar Docker Fortes.
+7. Para rotar la credencial, crea una segunda API key, actualiza los Environments, verifica y recién entonces revoca la anterior.
+
 ---
 
-## 5. Modo "Legacy/Inseguro" (Sin mTLS)
+## 5. Transporte interno backend-agent
 
-Por diseño y seguridad, ContainerHub implementa **Mutual TLS (mTLS)** de forma **estricta y hardcodeada** para proteger el socket remoto contra acceso no autorizado, ya que los agentes de Docker exponen permisos que equivalen a acceso de administrador/root en el host. 
+El stack de compatibilidad usa HTTP/WS sin mTLS entre el backend y el agente para mantener la topología aceptada de Docker Fortes y evitar infraestructura adicional en esta sustitución. Es un riesgo aceptado para este alcance, no una garantía de transporte seguro.
 
-Si te encuentras en un entorno aislado donde es mandatorio operar en un **modo legacy o inseguro (HTTP/WS sin cifrar ni verificar)**, deberás aplicar modificaciones directas al código fuente antes de compilar.
-
-### A. Modificaciones requeridas en el Backend (`containerhub-back`)
-
-1. **`AgentHealthClient.ts`**:
-   - Cambia la importación nativa: de `import {request as httpsRequest} from 'node:https'` a `node:http`.
-   - Remueve la validación que lanza errores si faltan los `fileVariables` de certificados.
-   - En `requestAgent()`, remueve las llaves `{ ca, cert, key, servername }` de las opciones de conexión.
-2. **`AgentTerminalClient.ts`**:
-   - Reemplaza el esquema estricto del socket de `wss://` a `ws://`.
-   - Elimina las `connectionOptions` (que incluyen los certificados del cliente) enviadas al constructor del WebSocket.
-
-### B. Modificaciones requeridas en el Agente (`containerhub-agent`)
-
-1. **`server.ts`**:
-   - Elimina la verificación de variables obligatorias como `CONTAINERHUB_AGENT_CA_FILE` en `readAgentServerConfig()`.
-   - En la función `buildAgentServer`, reemplaza la instanciación de Fastify `Fastify({https})` simplemente por `Fastify()` sin inyectar objetos de seguridad TLS.
-
-### C. Configuración final en `docker-compose.yml`
-
-Una vez modificados los clientes y el agente, ajusta la receta del orquestador:
-
-1. **Remueve las variables de entorno** referidas a las llaves TLS en los apartados `environment:` tanto de `app` como de `agent` (p. ej. `CONTAINERHUB_AGENT_CA_FILE`).
-2. **Elimina las referencias en `secrets:`** dentro de la definición de ambos servicios, así como el bloque inferior global de `secrets:`.
-3. Re-compila las imágenes (Paso 1) y redespliega el stack usando `docker stack deploy`.
-
-> [!WARNING]
-> **Riesgo Crítico de Seguridad:**
-> Deshabilitar mTLS significa exponer la terminal de contenedores y los binarios del host en texto plano sobre la red. Nunca emplees el modo legacy en producción a menos que la infraestructura subyacente (como una malla de servicio tipo Istio o Linkerd) garantice el cifrado extremo a extremo de forma externa.
+El puerto 9997 del agente debe permanecer únicamente en la red overlay privada: no lo publiques en el host ni lo expongas fuera del Swarm. App y agente deben compartir esa overlay y los mismos roots/bind mounts. Si más adelante se exige autenticación fuerte del agente, trátala como un proyecto de infraestructura separado con identidad de workload y despliegue coordinado en todos los nodos.

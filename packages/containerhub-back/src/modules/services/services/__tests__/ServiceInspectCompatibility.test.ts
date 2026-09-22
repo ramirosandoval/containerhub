@@ -88,3 +88,16 @@ test('maps the Docker-recoverable legacy discovery fields', () => {
 test('returns an explicit empty files array because Docker does not retain uploaded source contents', () => {
     assert.deepEqual(mapInspectToServiceModel(inspectedService as never).files, [])
 })
+
+test('reveals legacy environment and label values only when explicitly requested', () => {
+    const service = mapInspectToServiceModel(inspectedService as never, {revealConfiguration: true})
+
+    assert.deepEqual(service.envs, [
+        {name: 'A', value: '1'},
+        {name: 'EMPTY', value: ''}
+    ])
+    assert.deepEqual(service.labels, [
+        {name: 'owner', value: 'platform'},
+        {name: 'component', value: 'api'}
+    ])
+})
