@@ -11,6 +11,7 @@ import {RegistryRoutes} from '../modules/registry/routes/RegistryRoutes.js'
 import {MonitoringRoutes} from '../modules/monitoring/routes/MonitoringRoutes.js'
 import {TaskMonitorizationRoutes} from '../modules/monitoring/routes/TaskMonitorizationRoutes.js'
 import {MediaRoutes} from '@drax/media-back'
+import {AuditRoutes} from '@drax/audit-back'
 import multipart from '@fastify/multipart'
 import {typeDefs, resolvers} from './GraphQLSchema.js'
 import YogaFastifyServer from '../servers/YogaFastifyServer.js'
@@ -33,6 +34,7 @@ type SwaggerTransformInput = {
 const dualAuthenticationSecurity = [{bearerAuth: []}, {apiKeyAuth: []}]
 
 function localRouteTag(url: string): string | undefined {
+    if (url.startsWith('/api/audits')) return 'Audit'
     if (url.startsWith('/api/services') || url.startsWith('/api/docker')) return 'Services'
     if (url.startsWith('/api/registry')) return 'Registry'
     if (url.startsWith('/api/gitlab')) return 'GitLab'
@@ -130,6 +132,7 @@ export default function YogaFastifyServerFactory() {
     server.fastify.register(UserSessionRoutes as any)
     server.fastify.register(UserLoginFailRoutes as any)
     server.fastify.register(UserApiKeyRoutes as any)
+    server.fastify.register(AuditRoutes as any)
     server.fastify.register(ServiceRoutes as any)
     server.fastify.register(SettingsRoutes as any)
     server.fastify.register(TerminalRoutes as any)
