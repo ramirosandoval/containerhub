@@ -128,6 +128,18 @@ test('create service normalizes the legacy command, nullable limits and UDP prot
     }])
 })
 
+test('create service treats a null legacy command as the image default', async () => {
+    await createService({
+        name: 'stack_default_command',
+        image: 'alpine:3.20',
+        command: null
+    } as never, mutationContext)
+
+    const taskTemplate = createdServiceSpecs.at(-1)?.TaskTemplate
+    assert.ok(taskTemplate && 'ContainerSpec' in taskTemplate)
+    assert.equal(taskTemplate.ContainerSpec?.Command, undefined)
+})
+
 test('create service prefers the canonical port protocol over the legacy alias', async () => {
     await createService({
         name: 'stack_api',

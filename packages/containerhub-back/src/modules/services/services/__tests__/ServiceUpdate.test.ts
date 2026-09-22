@@ -7,6 +7,7 @@ type DockerServiceSpec = import('dockerode').ServiceSpec
 const updatedServiceSpecs: Array<DockerServiceSpec & {version?: number}> = []
 const auditRecords: Array<Record<string, unknown>> = []
 let serviceLookups = 0
+let existingCommand: string[] | undefined
 const mutationContext = {
     user: {id: 'user-1', username: 'operator', roleName: 'Admin'},
     ip: '127.0.0.1',
@@ -24,7 +25,7 @@ class DockerStub {
                 Spec: {
                     Name: 'stack_api',
                     Labels: {'com.docker.stack.namespace': 'stack'},
-                    TaskTemplate: {ContainerSpec: {Image: 'alpine:3.20'}}
+                    TaskTemplate: {ContainerSpec: {Image: 'alpine:3.20', Command: existingCommand}}
                 }
             }),
             update: async (serviceSpec: DockerServiceSpec & {version?: number}) => {
@@ -98,6 +99,19 @@ test('update service accepts the legacy partial wire shape without changing its 
     assert.deepEqual(taskTemplate.ContainerSpec?.Command, ['/usr/local/bin/start'])
     assert.deepEqual(taskTemplate.Resources, {Reservations: {NanoCPUs: 250_000_000}})
     assert.deepEqual(serviceSpec?.EndpointSpec?.Ports, [{PublishedPort: 5353, TargetPort: 5353, Protocol: 'udp'}])
+})
+
+test('update service clears an existing command when the legacy payload sends null', async () => {
+    existingCommand = ['/usr/local/bin/legacy-start']
+    try {
+        await updateService('service-1', {command: null} as never, mutationContext)
+
+        const taskTemplate = updatedServiceSpecs.at(-1)?.TaskTemplate
+        assert.ok(taskTemplate && 'ContainerSpec' in taskTemplate)
+        assert.equal(taskTemplate.ContainerSpec?.Command, undefined)
+    } finally {
+        existingCommand = undefined
+    }
 })
 
 test('update service rejects malformed input before inspecting Docker', async () => {

@@ -101,7 +101,7 @@ const NullishFiniteNumberSchema = z.number().finite().nullable().optional()
 const CommandInputSchema = z.union([
     z.string().min(1),
     z.array(z.string().min(1))
-])
+]).nullable()
 const PortInputSchema = z.object({
     protocol: z.string().optional(), portsProtocol: z.string().optional(),
     hostPort: z.number().int().optional(), publishedPort: z.number().int().optional(),
@@ -444,7 +444,9 @@ function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec): Docke
         ContainerSpec: {
             ...container,
             Image: input.image ?? container.Image,
-            Command: typeof input.command === 'string' ? [input.command] : input.command ?? container.Command,
+            Command: input.command === null
+                ? undefined
+                : typeof input.command === 'string' ? [input.command] : input.command ?? container.Command,
             Env: input.envs ? input.envs.map((env) => `${env.name}=${env.value ?? ''}`) : container.Env,
             Labels: {...(container.Labels ?? {}), ...labelsToObject(input.labels)},
             Mounts: input.volumes ? input.volumes.map(toMountSettings) : container.Mounts,

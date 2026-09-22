@@ -43,8 +43,8 @@ The dedicated integration role requires exactly:
 | `GET /api/services` | `DOCKER_VIEW` | Full normalized service array | DONE |
 | `GET /api/services/paginate` | `DOCKER_VIEW` | Query `page,limit,orderBy,order,search,stack,filters`; returns `{page,limit,total,items}` | DONE |
 | `GET /api/docker/service` and `/:idOrName` | `DOCKER_VIEW`; `DOCKER_CONFIGURATION_VIEW` to reveal config values | List/inspect/find; env and labels redacted by default | DONE |
-| `POST /api/docker/service` | `DOCKER_CREATE` | Inspected response, task networks/aliases, labeled stack network, health-check, resources and legacy policies | DONE |
-| `PUT /api/docker/service/:service` | `DOCKER_UPDATE` | Live versioned update through the shared create/update mapper with durable audit | DONE |
+| `POST /api/docker/service` | `DOCKER_CREATE` | Inspected response, task networks/aliases, labeled stack network, health-check, resources and legacy policies; legacy `command: null` uses the image default | DONE |
+| `PUT /api/docker/service/:service` | `DOCKER_UPDATE` | Live versioned update through the shared create/update mapper with durable audit; legacy `command: null` clears an explicit command and restores the image default | DONE |
 | restart/remove single backend | `DOCKER_RESTART` / `DOCKER_REMOVE` | Existing single-service commands with durable audit | DONE |
 | `POST /api/docker/service/restart` / `POST /api/docker/service/remove` | `DOCKER_RESTART` / `DOCKER_REMOVE` | Non-empty `serviceIds`; sequential per-service success/error results without aborting the batch | DONE |
 | restart/remove selected UI | operation-specific | Shared one-or-many selection; separate confirmation, result feedback and refresh | DONE |
