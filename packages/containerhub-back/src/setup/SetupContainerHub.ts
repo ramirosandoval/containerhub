@@ -87,8 +87,8 @@ async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
             ...(existingRole.icon ? {icon: existingRole.icon} : {}),
             ...(existingRole.color ? {color: existingRole.color} : {})
         }
-        if (existingRole.readonly) await roleService.systemUpdate(existingRole._id, migratedRole)
-        else await roleService.update(existingRole._id, migratedRole)
+        // Legacy Dracul roles can violate current Drax name validation; preserve their identity during permission migration.
+        await roleService._repository.update!(existingRole._id, migratedRole)
     }
     if (bootstrapUser) {
         const existingUser = await UserServiceFactory().findByUsername(bootstrapUser.username)

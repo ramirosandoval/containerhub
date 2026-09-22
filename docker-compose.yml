@@ -12,7 +12,7 @@ services:
         exec node packages/containerhub-back/dist/index.js
     environment:
       DRAX_DB_ENGINE: mongo
-      DRAX_MONGO_URI: ${CONTAINERHUB_MONGO_URI:-mongodb://mongo:27017/incartainer}
+      DRAX_MONGO_URI: ${CONTAINERHUB_MONGO_URI:-mongodb://mongo:27017/containerhub}
       DRAX_PORT: ${CONTAINERHUB_PORT:-9998}
       CONTAINERHUB_HOST_VOLUME_ROOTS: ${CONTAINERHUB_STORAGE_ROOT:-/storage}
       CONTAINERHUB_BOOTSTRAP_ENABLED: ${CONTAINERHUB_BOOTSTRAP_ENABLED:-false}
@@ -59,7 +59,7 @@ services:
         exec node packages/containerhub-back/dist/monitoring.js
     environment:
       DRAX_DB_ENGINE: mongo
-      DRAX_MONGO_URI: ${CONTAINERHUB_MONGO_URI:-mongodb://mongo:27017/incartainer}
+      DRAX_MONGO_URI: ${CONTAINERHUB_MONGO_URI:-mongodb://mongo:27017/containerhub}
       CONTAINERHUB_BOOTSTRAP_ENABLED: "false"
       TERMINAL_ALLOWED_ORIGIN: ${CONTAINERHUB_ORIGIN:-http://localhost:9998}
       DOCKER_SOCKET_PATH: /var/run/docker.sock

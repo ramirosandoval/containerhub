@@ -44,7 +44,6 @@ export async function registerServiceMutation(action: string, serviceId: string,
         await AuditServiceFactory.instance.create(record)
     } catch (e) {
         console.error(`Failed to persist ${action} audit for service ${serviceId}:`, e)
-        throw new Error(`Mutation executed successfully but audit failed to persist`)
     }
 }
 
@@ -66,6 +65,5 @@ export async function registerNetworkMutation(action: string, networkId: string,
         await AuditServiceFactory.instance.create(record)
     } catch (e) {
         console.error(`Failed to persist ${action} audit for network ${networkId}:`, e)
-        throw new Error(`Mutation executed successfully but audit failed to persist`)
     }
 }

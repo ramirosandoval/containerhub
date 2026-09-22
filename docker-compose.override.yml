@@ -1,0 +1,5 @@
+services:
+  app:
+    image: 192.168.122.1:5000/container-hub:latest
+  agent:
+    image: 192.168.122.1:5000/containerhub-agent:latest

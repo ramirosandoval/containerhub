@@ -37,8 +37,19 @@ test('startup persists the approved Docker bundles idempotently and enforces the
         await SetupContainerHub()
         const roleService = RoleServiceFactory()
         const originalRoleIds = new Map((await roleService.fetchAll()).map((role) => [role.name, role._id]))
+        const legacyRoleNames = ['admin', 'sudo']
+        const legacyRoleIds = new Map<string, string>()
+        for (const name of legacyRoleNames) {
+            const role = await roleService._repository.create!({
+                name,
+                permissions: ['DOCKER_VIEW', 'DOCKER_CONSOLE'],
+                childRoles: [],
+                readonly: true
+            })
+            legacyRoleIds.set(name, role._id)
+        }
         await SetupContainerHub()
-        assert.equal((await roleService.fetchAll()).length, Object.keys(expectedBundles).length)
+        assert.equal((await roleService.fetchAll()).length, Object.keys(expectedBundles).length + legacyRoleNames.length)
         for (const [roleName, permissions] of Object.entries(expectedBundles)) {
             const storedRole = await roleService.findByName(roleName)
             assert.ok(storedRole, `${roleName} must be seeded`)
@@ -50,6 +61,12 @@ test('startup persists the approved Docker bundles idempotently and enforces the
             assert.equal(rbac.hasPermission('DOCKER_RESTART'), permissions.includes('DOCKER_RESTART'), roleName)
             assert.equal(rbac.hasPermission('DOCKER_TERMINAL'), permissions.includes('DOCKER_TERMINAL'), roleName)
             assert.equal(rbac.hasPermission('user:manage'), roleName === 'Admin' || roleName === 'Sudo', roleName)
+        }
+        for (const name of legacyRoleNames) {
+            const storedRole = await roleService.findByName(name)
+            assert.ok(storedRole)
+            assert.equal(storedRole._id, legacyRoleIds.get(name), `${name} keeps its legacy ID`)
+            assert.deepEqual(storedRole.permissions, ['DOCKER_VIEW', 'DOCKER_TERMINAL'])
         }
         server = YogaFastifyServerFactory()
         for (const roleName of ['Implementaciones', 'Soporte']) {

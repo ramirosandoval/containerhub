@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/packages/containerhub-back/package.json packages/containerhub-back/package.json
+COPY --from=build /app/packages/containerhub-back/node_modules packages/containerhub-back/node_modules
 COPY --from=build /app/packages/containerhub-back/dist packages/containerhub-back/dist
 COPY --from=build /app/packages/containerhub-front/dist public
 EXPOSE 9998

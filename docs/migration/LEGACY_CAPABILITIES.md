@@ -1252,7 +1252,7 @@ Evidence: legacy base module; target `YogaFastifyServerFactory.ts`, `ServiceRout
 
 - Operators must disable bootstrap and remove its credentials after initial creation; changing the enabled bootstrap username would create another privileged user.
 - Admin has Docker permissions only and cannot necessarily administer Drax identity.
-- Shared Mongo collection compatibility is unverified.
+- Startup against the shared Mongo collection is verified, and a disposable database on the same MongoDB engine verified lowercase `admin`/`sudo` migration with stable IDs and only `DOCKER_TERMINAL`. Existing-user login and browser terminal use remain unverified.
 
 ### Structured field completion
 

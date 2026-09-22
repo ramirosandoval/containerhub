@@ -1,4 +1,5 @@
-import mongoose, {Document, Schema} from 'mongoose'
+import mongoose, {Document, type PaginateModel, Schema} from 'mongoose'
+import mongoosePaginate from 'mongoose-paginate-v2'
 
 export interface ITaskMonitorization {
     date: Date
@@ -29,5 +30,6 @@ const TaskMonitorizationSchema = new Schema<ITaskMonitorizationDocument>({
 
 // Indice para recuperar rápidamente por fecha descendente
 TaskMonitorizationSchema.index({date: -1})
+TaskMonitorizationSchema.plugin(mongoosePaginate)
 
-export const TaskMonitorizationModel = mongoose.model<ITaskMonitorizationDocument>('TaskMonitorization', TaskMonitorizationSchema)
+export const TaskMonitorizationModel = mongoose.model<ITaskMonitorizationDocument, PaginateModel<ITaskMonitorizationDocument>>('TaskMonitorization', TaskMonitorizationSchema)
