@@ -4,7 +4,7 @@ Este documento detalla el ciclo de vida de empaquetado, distribución y desplieg
 
 ## 1. Construcción de Imágenes (Build)
 
-El repositorio incluye dos imágenes: la aplicación principal (`containerhub`) y el agente remoto (`containerhub-agent`). La imagen principal se ejecuta como los servicios Swarm `app` (API y frontend) y `monitoring` (recolección histórica); ambos usan el mismo tag inmutable.
+El repositorio publica dos imágenes: `containerhub` y `containerhub-agent`. La imagen `containerhub` se reutiliza en dos servicios Swarm independientes: la aplicación y el recolector de monitorización; ambos usan el mismo tag inmutable.
 Para compilar las imágenes localmente, asegúrate de situarte en la raíz del monorepo:
 
 ```bash
@@ -30,13 +30,18 @@ docker push mi-registry.com/containerhub-agent:latest
 
 ## 3. Despliegue manual en Docker Swarm
 
-El stack de ejemplo no es requisito operativo: las tres imágenes se pueden desplegar como servicios independientes. Conserva estos roles:
+El stack de ejemplo no es requisito operativo: los tres servicios se pueden desplegar de forma independiente. Conserva estos roles:
 
 | Servicio | Proceso y placement | Puertos y mounts |
 | --- | --- | --- |
 | `containerhub_app` | `node packages/containerhub-back/dist/index.js` en un manager | publica la API; monta Docker socket, datos y los roots que docker-devops aprovisiona |
 | `containerhub_agent` | `node packages/containerhub-agent/dist/index.js` global en workers | no publica puerto; monta Docker socket, datos y exactamente los mismos roots de host |
-| `containerhub_monitoring` | `node packages/containerhub-back/dist/monitoring.js` en un manager | no publica puerto; no necesita roots de provisioning |
+| `containerhub_monitoring` | `containerhub-monitoring` desde la misma imagen/tag de `containerhub`, en un manager | no publica puerto; no necesita roots de provisioning |
+
+En Docker DevOps, deja vacío `Comando` para la aplicación y configura
+`containerhub-monitoring` como `Comando` del servicio de monitoring. Es un
+launcher sin argumentos incluido en la imagen para respetar el contrato de
+comando string de Docker DevOps.
 
 Para que docker-devops pueda crear un archivo de `/storage/...` y montarlo después en un servicio, configura **el mismo valor** y bind mount en `app` y en cada `agent`:
 
