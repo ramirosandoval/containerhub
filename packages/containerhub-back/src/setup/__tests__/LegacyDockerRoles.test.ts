@@ -9,9 +9,11 @@ import YogaFastifyServerFactory from '../../factories/YogaFastifyServerFactory.j
 
 const serviceAccess = ['DOCKER_VIEW', 'DOCKER_REMOVE', 'DOCKER_LOGS', 'DOCKER_TERMINAL']
 const serviceManagement = [...serviceAccess, 'DOCKER_RESTART', 'DOCKER_CREATE', 'DOCKER_UPDATE']
-const isDockerOrSettingsPermission = (permission: string) => permission.startsWith('DOCKER_') || permission.startsWith('SETTINGS_')
+const auditAccess = ['audit:view', 'audit:viewAll', 'audit:manage']
+const isManagedBundlePermission = (permission: string) =>
+    permission.startsWith('DOCKER_') || permission.startsWith('SETTINGS_') || permission.startsWith('audit:')
 const expectedBundles: Record<string, string[]> = {
-    Sudo: [...serviceManagement, 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'],
+    Sudo: [...serviceManagement, 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE', ...auditAccess],
     Implementaciones: serviceManagement,
     Infraestructura: serviceAccess,
     Desarrollo: serviceManagement,
@@ -19,7 +21,7 @@ const expectedBundles: Record<string, string[]> = {
     PM: serviceAccess,
     QA: serviceAccess,
     Soporte: [],
-    Admin: [...serviceManagement, 'DOCKER_CONFIGURATION_VIEW', 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_NETWORK_CREATE', 'DOCKER_NETWORK_UPDATE', 'DOCKER_NETWORK_REMOVE', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage']
+    Admin: [...serviceManagement, 'DOCKER_CONFIGURATION_VIEW', 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_NETWORK_CREATE', 'DOCKER_NETWORK_UPDATE', 'DOCKER_NETWORK_REMOVE', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage', ...auditAccess]
 }
 
 test('startup persists the approved Docker bundles idempotently and enforces their API access', async () => {
@@ -54,13 +56,16 @@ test('startup persists the approved Docker bundles idempotently and enforces the
             const storedRole = await roleService.findByName(roleName)
             assert.ok(storedRole, `${roleName} must be seeded`)
             assert.equal(storedRole._id, originalRoleIds.get(roleName), `${roleName} keeps its ID`)
-            assert.deepEqual(storedRole.permissions.filter(isDockerOrSettingsPermission).sort(), permissions.filter(isDockerOrSettingsPermission).sort(), roleName)
+            assert.deepEqual(storedRole.permissions.filter(isManagedBundlePermission).sort(), permissions.filter(isManagedBundlePermission).sort(), roleName)
             assert.equal(Boolean(storedRole.readonly), roleName === 'Admin' || roleName === 'Sudo', roleName)
             const authUser = {id: 'role-bundle-test', username: roleName, session: 'test-session', roleId: storedRole._id, roleName}
             const rbac = new Rbac(authUser, storedRole)
             assert.equal(rbac.hasPermission('DOCKER_RESTART'), permissions.includes('DOCKER_RESTART'), roleName)
             assert.equal(rbac.hasPermission('DOCKER_TERMINAL'), permissions.includes('DOCKER_TERMINAL'), roleName)
             assert.equal(rbac.hasPermission('user:manage'), roleName === 'Admin' || roleName === 'Sudo', roleName)
+            assert.equal(rbac.hasPermission('audit:view'), permissions.includes('audit:view'), roleName)
+            assert.equal(rbac.hasPermission('audit:viewAll'), permissions.includes('audit:viewAll'), roleName)
+            assert.equal(rbac.hasPermission('audit:manage'), permissions.includes('audit:manage'), roleName)
         }
         for (const name of legacyRoleNames) {
             const storedRole = await roleService.findByName(name)

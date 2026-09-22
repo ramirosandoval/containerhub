@@ -10,9 +10,11 @@ import {
     UserServiceFactory
 } from '@drax/identity-back'
 import type {IUserCreate} from '@drax/identity-share'
+import {AuditPermissions} from '@drax/audit-back'
 import {DockerPermissions, dockerPermissions} from '../modules/services/permissions/DockerPermissions.js'
 
 const bootstrapEnabledEnvironmentVariable = 'CONTAINERHUB_BOOTSTRAP_ENABLED'
+const auditPermissions = Object.values(AuditPermissions)
 
 function requiredBootstrapValue(environment: NodeJS.ProcessEnv, variable: string): string {
     const value = environment[variable]?.trim()
@@ -53,7 +55,7 @@ async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
     ]
     await CreateOrUpdateRole({
         name: 'Admin',
-        permissions: [...dockerPermissions, ...identityPermissions],
+        permissions: [...dockerPermissions, ...identityPermissions, ...auditPermissions],
         childRoles: [],
         readonly: true
     })
@@ -62,7 +64,7 @@ async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
     const monitoringManagement = [DockerPermissions.MonitoringCreate, DockerPermissions.MonitoringPause, DockerPermissions.MonitoringDelete]
     const settingsPermissions = ['SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE']
     const rolePermissions = {
-        Sudo: [...serviceManagement, DockerPermissions.NodesFetch, DockerPermissions.NetworkView, ...monitoringManagement, ...settingsPermissions, ...identityPermissions.filter(permission => permission.startsWith('user:') || permission.startsWith('role:') || permission.startsWith('userApiKey:') || permission.startsWith('userloginfail:') || permission.startsWith('usersession:') || permission.startsWith('tenant:'))],
+        Sudo: [...serviceManagement, DockerPermissions.NodesFetch, DockerPermissions.NetworkView, ...monitoringManagement, ...settingsPermissions, ...identityPermissions.filter(permission => permission.startsWith('user:') || permission.startsWith('role:') || permission.startsWith('userApiKey:') || permission.startsWith('userloginfail:') || permission.startsWith('usersession:') || permission.startsWith('tenant:')), ...auditPermissions],
         Implementaciones: serviceManagement,
         Infraestructura: serviceAccess,
         Desarrollo: serviceManagement,
@@ -157,6 +159,7 @@ export default async function SetupContainerHub() {
     await initializeContainerHubRuntime()
     LoadPermissions([
         ...dockerPermissions,
+        ...auditPermissions,
         'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
         'role:manage', 'role:view', 'role:create', 'role:update', 'role:delete', 'role:permissions',
         'userApiKey:manage', 'userApiKey:view', 'userApiKey:create', 'userApiKey:update', 'userApiKey:delete',
