@@ -613,8 +613,9 @@ export async function fetchTasks(serviceIdentifier: string): Promise<ServiceTask
     return (await fetchRawTasks(serviceIdentifier)).map(toServiceTaskModel)
 }
 
-export async function fetchTaskInspect(taskId: string) {
-    return redactTaskInspect(await docker.getTask(taskId).inspect())
+export async function fetchTaskInspect(taskId: string, options: ServiceReadOptions = {}) {
+    const inspection = await docker.getTask(taskId).inspect()
+    return options.revealConfiguration ? inspection : redactTaskInspect(inspection)
 }
 
 const sensitiveInspectField = /password|passwd|secret|token|credential|authorization|authentication|auth(?:config|data|header)|auth$|api.?key|access.?key|private.?key|client.?key/i

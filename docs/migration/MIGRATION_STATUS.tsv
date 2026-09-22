@@ -21,7 +21,7 @@ SVC-04	Services	Single/multiple selection and restart UI	DONE	Native table selec
 SVC-05	Services	Single/multiple remove UI	DONE	Shared selection; DOCKER_REMOVE; irreversible confirmation; per-service outcomes; refresh; durable audit; focused API and live browser proof	Maintain remove API/UI/audit proof
 SVC-06	Services	Create/update behavior	DONE	Create/update use versioned Docker specs with networks, health-check, resources, restart/rollout policies and durable audit; authenticated Docker probes pass	Maintain create/update API and Docker proof
 TASK-01	Tasks and inspect	Normalized list	DONE	Current service task endpoint/UI	Maintain API/UI proof
-TASK-02	Tasks and inspect	Task inspect	DONE	Protected REST/page exist; recursive redaction hides command/args, environment and label values; backend regressions and frontend build pass; Playwright specs pass	Maintain API/UI proof
+TASK-02	Tasks and inspect	Task inspect	DONE	Protected REST/page exist; recursive redaction is the default and DOCKER_CONFIGURATION_VIEW reveals the full payload; backend regressions and frontend build pass; Playwright specs pass	Maintain API/UI proof for both permission levels
 LOG-01	Task/service logs	Per-task snapshot and stream	DONE	Authenticated REST/WS and filters	Live WSS proof
 LOG-02	Task/service logs	Service stack/name snapshot	DONE	Normalized running-task selection; auth/API tests and live Docker route proof	Maintain API and live proof
 LOG-03	Task/service logs	Editable log ceiling	DONE	Frontend uses SettingsApi to fetch maxLogsLines; backend default ceiling is 10000.	Maintain settings integration

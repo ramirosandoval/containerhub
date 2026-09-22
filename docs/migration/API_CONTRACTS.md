@@ -34,7 +34,7 @@ The dedicated integration role requires exactly:
 - `DOCKER_NODES_FETCH`
 - `DOCKER_NETWORK_VIEW`
 
-`DOCKER_CONFIGURATION_VIEW` reveals environment and label values only on the legacy Docker service list/detail and mutation responses. Without it, those values remain `[REDACTED]`. Native `/api/services`, GraphQL and task inspection remain redacted.
+`DOCKER_CONFIGURATION_VIEW` reveals configuration values on the legacy Docker service contracts and the full task inspection. Without it, service environment/label values and sensitive task inspection values remain `[REDACTED]`. Native `/api/services` and GraphQL remain redacted.
 
 ### Services
 
@@ -55,7 +55,7 @@ The dedicated integration role requires exactly:
 | Contract | Permission | Shape/notes | Status |
 |---|---|---|---|
 | `GET /api/docker/tasks/:serviceIdentifier` | `DOCKER_VIEW` | Normalized task array | DONE |
-| `GET /api/docker/task/:taskId` | undecided | Raw/redacted inspect | MISSING |
+| `GET /api/docker/task/:taskId/inspect` | `DOCKER_VIEW`; `DOCKER_CONFIGURATION_VIEW` to reveal the full payload | Docker task inspection; recursively redacted by default | DONE |
 | `GET /api/docker/task/:taskId/logs?tail=` | `DOCKER_LOGS` | Snapshot, tail 1..2000 | DONE |
 | `WS /api/docker/task/:taskId/logs/stream` | `DOCKER_LOGS` | JWT via bearer subprotocol; one filter-start frame | DONE |
 | `GET /api/docker/logs/:stack/:service` | `DOCKER_LOGS` | Snapshot from the first normalized running task; `null` when none is running | DONE |
@@ -104,7 +104,7 @@ Ghost reconciliation follows Docker Engine API v1.51 [`ContainerList`](https://d
 | Capability | Legacy contract | Target decision |
 |---|---|---|
 | Cluster topology | GraphQL node/task aggregate | CLU-01 totals migrated; CLU-02 topology and selectable polling remain missing |
-| Task inspect | GraphQL JSON | Implemented as protected `GET /api/docker/task/:taskId/inspect`; preserves structure while redacting command/args, environment and label values |
+| Task inspect | GraphQL JSON | Implemented as protected `GET /api/docker/task/:taskId/inspect`; preserves structure with recursive redaction by default and reveals the full payload with `DOCKER_CONFIGURATION_VIEW` |
 | Agent health | `GET /api/docker/nodes` includes nullable `agentHealthy` | Backend-to-agent `/health` matches the returned node ID; transport is HTTP by default and supports optional mTLS when all certificate variables are configured |
 | Agent containers | GraphQL backed by HTTP agent | Implemented `GET /containers/running`: `{nodeId, containers}`; node ID and consumed fields validated; 2s deadline and 8 MiB response limit. Authenticated remote ghost reconciliation passed on `debianvm` |
 | Derived stats | REST task/service `metrics` | CPU percentage/core count, total memory bytes, cumulative disk/network bytes; authenticated remote API and four-chart browser proof passed on `debianvm` |

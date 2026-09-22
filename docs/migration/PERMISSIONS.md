@@ -5,7 +5,7 @@
 | Permission | Current use |
 |---|---|
 | `DOCKER_VIEW` | Services, stacks, ghost page, service/task/stats reads, GitLab and Registry |
-| `DOCKER_CONFIGURATION_VIEW` | Reveal environment and label values only on the legacy Docker service REST contract for trusted integrations |
+| `DOCKER_CONFIGURATION_VIEW` | Reveal configuration values on legacy Docker service REST contracts and the full task inspection |
 | `DOCKER_CREATE` | Service create |
 | `DOCKER_UPDATE` | Service update and local folder/file provisioning |
 | `DOCKER_RESTART` | Service restart, single/bulk |
@@ -65,7 +65,7 @@ Required decisions before identity administration; LDAP itself is deferred until
 
 | Capability | Legacy permission | Current state | Required decision |
 |---|---|---|---|
-| Task inspect | `DOCKER_VIEW` | Protected redacted REST/page implemented | Authenticated browser rerun remains before DONE |
+| Task inspect | `DOCKER_VIEW`; `DOCKER_CONFIGURATION_VIEW` reveals the full payload | Protected REST/page implemented with recursive redaction by default | Maintain API/UI proof for both permission levels |
 | Cluster/version | `DOCKER_VIEW` | Aggregate summary and version migrated | Reuses legacy view permission; topology remains CLU-02 |
 | Monitoring read | `DOCKER_VIEW` | MON-01 configuration and MON-02 sample-history API/pages enforced | Real collector/database/browser proof remains for MON-02 |
 | Monitoring mutations | `DOCKER_MONITORING_CREATE/PAUSE/DELETE` | MON-01 API/buttons enforced; resume uses PAUSE | Registered and granted to Admin; other existing role bundles unchanged |

@@ -127,7 +127,7 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
             params: {type: 'object', required: ['taskId'], properties: {taskId: {type: 'string', minLength: 1}}},
             response: {200: {type: 'object', additionalProperties: true, description: 'Full Docker task inspection'}}
         }
-    }, async (request) => fetchTaskInspect(request.params.taskId))
+    }, async (request: any) => fetchTaskInspect(request.params.taskId, serviceReadOptions(request)))
     fastify.get('/api/docker/task/:taskid/stats', protectedRoute(DockerPermissions.View), async (request: any) => fetchTaskStats(request.params.taskid))
     fastify.get('/api/docker/task/:taskId/logs', protectedRoute(DockerPermissions.Logs), async (request: any) => {
         // TODO: implement caching strategy for application settings
