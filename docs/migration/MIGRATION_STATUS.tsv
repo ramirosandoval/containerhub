@@ -14,6 +14,7 @@ RBAC-03	Users and roles	Users/roles/tenants administration	DONE	Legacy backend/f
 RBAC-04	Users/roles/groups/tenants	Groups	OBSOLETE	Legacy group administration exists; Drax has no complete Group domain	Groups explicitly discarded by user; no migration required
 AUD-01	Operational audit	Durable service mutation audit	DONE	Drax audit records CREATE/UPDATE/RESTART/DELETE with actor and request metadata; focused SQLite and live authenticated restart proof	Maintain mutation audit tests
 AUD-02	Operational audit	Session/login-failure dashboards	DONE	Drax stores data but ContainerHub registers no dashboard routes/pages	Exposed the IdentityRoutes to render the UserSession and UserLoginFail pages
+AUD-03	Operational audit	Read-only audit administration page	DONE	Drax AuditRoutes/AuditCrud are integrated; Admin/Sudo reach the Home card and protected persisted audit list; focused API and local Playwright proof pass	Maintain API/RBAC/UI proof
 SVC-01	Services	List/search/filter/sort/pagination	DONE	Drax state/custom table plus server paginate	Maintain API/UI proof
 SVC-02	Services	Stack-context navigation	DONE	Stacks query seeds Services filter	Maintain UI proof
 SVC-03	Services	Task expansion	DONE	Normalized task endpoint and expandable rows	Maintain API/UI proof

@@ -110,7 +110,7 @@ Ghost reconciliation follows Docker Engine API v1.51 [`ContainerList`](https://d
 | Derived stats | REST task/service `metrics` | CPU percentage/core count, total memory bytes, cumulative disk/network bytes; authenticated remote API and four-chart browser proof passed on `debianvm` |
 | Monitoring configuration/history | GraphQL creation/list/actions; unused edit helper | MON-01 configuration REST plus MON-02 protected sample history below; real Docker/database/browser and distinct-worker proof pending |
 | Task lifecycle history | GraphQL list | Define event semantics and retention first |
-| Operational audit | Dracul GraphQL | Choose Drax-compatible persisted sink/read API |
+| Operational audit | Dracul GraphQL | Drax `/api/audits` read API with authenticated RBAC; service/network mutations remain the durable writers |
 | Settings/customization | Dracul generic APIs | Add only accepted product-specific contracts |
 | LDAP | Dracul LDAP fallback/group mapping | Deferred until Drax implements native LDAP support; no parallel ContainerHub adapter |
 | Existing local users/refresh token | Dracul bcrypt users and persisted refresh tokens | Prove shared-Mongo local-user login; assess refresh-token compatibility separately from LDAP |
