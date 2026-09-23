@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ContainerHub · Guía del stack Swarm</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.55; }
+    body { max-width: 1080px; margin: 0 auto; padding: 1.25rem; }
+    h1, h2, h3 { line-height: 1.2; }
+    h2 { margin-top: 2.2rem; border-bottom: 1px solid #8995a755; padding-bottom: .3rem; }
+    a { color: #2769bb; }
+    @media (prefers-color-scheme: dark) { a { color: #91bfff; } }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    code { overflow-wrap: anywhere; }
+    pre { padding: 1rem; border: 1px solid #8995a755; border-radius: .5rem; overflow-x: auto; white-space: pre; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 690px; }
+    th, td { text-align: left; vertical-align: top; padding: .65rem; border-bottom: 1px solid #8995a755; }
+    th { font-weight: 650; }
+    .note { border-left: 4px solid #c58620; padding: .2rem 1rem; margin: 1rem 0; }
+    .muted { opacity: .75; }
+    @media (max-width: 640px) { body { padding: .9rem; } th, td { padding: .45rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ContainerHub: entender el <code>docker-compose.yml</code></h1>
+  <p class="muted">Revisión: 23 de septiembre de 2026 · Archivo de referencia: <a href="../docker-compose.yml">compose actual</a>.</p>
+  <p><strong>Idea central:</strong> este YAML describe tres <em>servicios Swarm</em>: la aplicación, el recolector de métricas y un agente por worker Linux. No se ejecuta con <code>docker compose up</code>; el despliegue usa <code>docker stack deploy</code> desde un manager. Un stack llamado <code>dockerway</code> alberga además otros servicios: <strong>no</strong> desplegar este archivo parcial encima de ese stack compartido. <a href="https://docs.docker.com/engine/swarm/stack-deploy/#deploy-the-stack-to-the-swarm">Docker: desplegar stacks</a>.</p>
+
+  <h2>Mapa en 30 segundos</h2>
+  <pre>navegador → :9998 → containerhub (manager): API + frontend compilado
+                         │ Docker socket local
+                         ├─ overlay externa → Mongo (datos) y Vault (secretos)
+                         └─ overlay de agentes → containerhub-agent :9997 (workers)
+containerhub-monitoring (manager, sin puerto público)
+                         ├─ Mongo: lecturas y muestras de métricas
+                         ├─ Docker socket: tareas locales
+                         └─ agentes: estadísticas de tareas remotas</pre>
+  <p>El agente consulta el Docker daemon del <em>nodo donde corre</em>; por eso es global en workers. La aplicación usa el socket del manager para el trabajo local y DNS de Swarm para hallar al agente de cada worker; <code>dnsrr</code> devuelve direcciones de tareas en vez de una IP virtual única. <a href="https://docs.docker.com/engine/swarm/networking/#configure-service-discovery">Docker: DNSRR</a>. Fuente del cliente: <code>packages/containerhub-back/src/modules/services/services/AgentHealthClient.ts</code>.</p>
+
+  <h2>Qué hace cada bloque</h2>
+  <p>«Verificar» significa observar configuración o estado, no demostrar que la función completa opera. Un parser de YAML no prueba login ni comunicación con workers.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Elemento</th><th>Qué hace y por qué</th><th>Riesgo / comprobación</th></tr></thead>
+    <tbody>
+      <tr><td><code>services.containerhub.image</code></td><td>Imagen unificada del backend y el frontend; el <code>CMD</code> de <code>Dockerfile</code> inicia <code>dist/index.js</code>. <code>CONTAINERHUB_IMAGE</code> permite elegir el artefacto.</td><td>El tag por defecto es específico de este entorno: confirmar que la imagen esté disponible en el manager y preferir un tag/digest fijado para releases. <a href="https://docs.docker.com/engine/swarm/stack-deploy/#push-the-generated-image-to-the-registry">Docker: distribución de imágenes</a>.</td></tr>
+      <tr><td><code>services.containerhub-monitoring.image</code> y <code>command</code></td><td>Reutiliza la misma imagen que la app, pero <code>command: ["containerhub-monitoring"]</code> invoca el launcher de <code>docker/containerhub-monitoring</code>, que ejecuta <code>dist/monitoring.js</code>. Es otro servicio, no otro puerto.</td><td>Debe usar la misma revisión que la app. <code>stop_grace_period: 30s</code> le deja tiempo para terminar una recolección cuando recibe señal; su worker espera la operación pendiente (<code>MonitoringWorker.ts</code>). Verificar servicio <code>1/1</code>; no inferir que se guardan muestras solo por estar vivo.</td></tr>
+      <tr><td><code>services.containerhub-agent.image</code></td><td>Imagen separada cuyo <code>CMD</code> inicia <code>packages/containerhub-agent/dist/index.js</code>. <code>CONTAINERHUB_AGENT_IMAGE</code> selecciona su revisión.</td><td>Debe estar accesible en <em>todos</em> los workers elegibles; el tag <code>latest</code> no fija una versión. Verificar estado del nodo y réplicas globales.</td></tr>
+      <tr><td><code>environment</code> de app y monitoring</td><td>Ambos inicializan Mongo y secretos para identidad; monitoring desactiva explícitamente el bootstrap. App además recibe puerto, integración GitLab/Registry y valores de bootstrap. Ambos conservan origen de terminal porque el inicializador valida la configuración en modo producción.</td><td><code>environment</code> no es un almacén de secretos. <code>GITLAB_TOKEN</code> ahora queda vacío si no se provee: las rutas de GitLab requieren configurarlo. Inspeccionar <em>solo nombres</em> de variables al diagnosticar, nunca volcar valores de <code>docker service inspect</code>.</td></tr>
+      <tr><td><code>environment</code> del agente; <code>NODE_ID</code></td><td>Puerto, socket, ruta de datos y raíces permitidas para archivos. <code>NODE_ID: "{{.Node.ID}}"</code> pasa al proceso la identidad del nodo asignado; el backend comprueba el ID devuelto por el endpoint <code>/health</code>. <a href="https://docs.docker.com/engine/swarm/services/#create-services-using-templates">Docker: templates de servicio</a>.</td><td>No es autenticación criptográfica. Se retiró <code>DRAX_SQLITE_FILE</code>: el agente no lee esa variable; se mantienen datos/mounts para el aprovisionamiento.</td></tr>
+      <tr><td><code>networks</code></td><td><code>containerhub-agent-network</code> es overlay creada para app, monitoring y agentes; el alias <code>containerhub-agent</code> permite resolución DNS. <code>containerhub-mongo-network</code> es externa (por defecto <code>dockerway_default</code>) y la comparten app/monitoring con servicios Mongo y Vault ya desplegados. <a href="https://docs.docker.com/engine/network/drivers/overlay/#create-an-overlay-network">Docker: overlay</a>.</td><td>El nombre «mongo» no significa que cree un Mongo; también permite acceso a Vault. Una overlay privada <em>no garantiza cifrado de datos</em> sin opción de cifrado, y no reemplaza autenticación del agente. <a href="https://docs.docker.com/engine/network/drivers/overlay/#encrypt-traffic-on-an-overlay-network">Docker: cifrado opcional</a>.</td></tr>
+      <tr><td><code>secrets</code></td><td><code>containerhub-vault-client-key</code> es un Docker secret <em>externo</em>: se crea antes y se autoriza solo a app/monitoring. Cada uno lo lee como archivo <code>/run/secrets/containerhub-vault-client-key</code>; desde Vault se obtienen JWT y API key, y si se configuró, contraseña inicial. <a href="https://docs.docker.com/engine/swarm/secrets/#how-docker-manages-secrets">Docker: secretos en servicios</a>.</td><td>No exponer el contenido en logs ni HTML. El agente no necesita ese secreto. URL de Vault por defecto usa HTTP interno: usar transporte/protección acordes a la red real; el secreto de Docker no cifra por sí mismo la llamada de la app a Vault.</td></tr>
+      <tr><td><code>volumes</code></td><td>App, collector y agent montan <code>/var/run/docker.sock</code> (control del Docker daemon de su nodo) y el volumen nombrado <code>containerhub-data:/var/lib/containerhub</code>. App y agent además montan la raíz host configurable, por defecto <code>/storage</code>, junto con <code>/logs</code> y <code>/localdata</code> en los mismos paths interiores; monitoring no necesita esas tres raíces.</td><td>El socket da control de alto privilegio sobre el host: restringir acceso al servicio y al manager. El volumen usa almacenamiento local por nodo, <strong>no</strong> replica datos entre manager y workers. Los bind mounts deben existir en cada nodo donde se programe una tarea. <a href="https://docs.docker.com/engine/security/protect-access/">Docker: proteger el daemon</a> · <a href="https://docs.docker.com/engine/swarm/services/#give-a-service-access-to-volumes-or-bind-mounts">Docker: mounts de servicios</a>.</td></tr>
+      <tr><td><code>ports</code> de app</td><td><code>target</code> es el listener dentro del contenedor; <code>published</code> el puerto del host; ambos siguen <code>CONTAINERHUB_PORT</code> (9998 por defecto); <code>protocol: tcp</code>; <code>mode: host</code> omite la malla de ingress.</td><td>Solo los nodos con tarea app escuchan ese puerto: el proxy debe apuntar al manager que la aloja, no a cualquier worker. TLS público corresponde al proxy. <a href="https://docs.docker.com/engine/swarm/ingress/#bypass-the-routing-mesh">Docker: host vs routing mesh</a>.</td></tr>
+      <tr><td><code>deploy</code> de app/monitoring</td><td><code>replicas: 1</code> deja una instancia de cada proceso; <code>node.role == manager</code> sitúa ambos junto al socket local del manager. El collector tiene un planificador en memoria, por eso conservar una instancia evita duplicar recolecciones.</td><td>Con varios managers, placement no fija cuál recibirá tareas ni comparte un volumen local entre ellos. No escalar el collector sin coordinar exclusión. <a href="https://docs.docker.com/engine/swarm/services/#placement-constraints">Docker: placement</a>.</td></tr>
+      <tr><td><code>deploy</code> de agent</td><td><code>mode: global</code> programa un agente por nodo elegible; constraints <code>node.role == worker</code> y <code>node.platform.os == linux</code> excluyen al manager. <code>endpoint_mode: dnsrr</code> entrega IPs de tareas, para que el backend seleccione la que declara el Node ID buscado.</td><td>No se publica :9997 al host. Con cero workers disponibles hay cero agentes; los accesos remotos no están probados. <a href="https://docs.docker.com/engine/swarm/networking/#configure-service-discovery">Docker: DNSRR</a>.</td></tr>
+      <tr><td><code>volumes:</code> y <code>secrets:</code> al final</td><td>Declaran el volumen nombrado y el secret externo referidos por los servicios. El primero se crea por stack si falta; el segundo <em>debe existir antes</em>. <a href="https://docs.docker.com/engine/swarm/services/#data-volumes">Docker: volúmenes</a> · <a href="https://docs.docker.com/engine/swarm/secrets/#defining-and-using-secrets-in-compose-files">Docker: secret externo</a>.</td><td>No borrar <code>containerhub-data</code> por ser «Mongo»: el código aún usa <code>DOCKER_DATA_PATH</code> para archivos relativos. El volumen no es sustituto de Mongo.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Variables, una por una</h2>
+  <p>La forma <code>${VARIABLE:-valor}</code> toma la variable del entorno del comando o usa el fallback si está ausente/vacía. <a href="https://docs.docker.com/reference/compose-file/interpolation/">Docker: interpolación</a>. Lo siguiente describe <em>este YAML</em>, no todos los modos de arranque del backend.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Clave / quién la recibe</th><th>Función y decisión de despliegue</th></tr></thead>
+    <tbody>
+      <tr><td><code>DRAX_DB_ENGINE</code> · app, monitoring</td><td><code>mongo</code>: persistencia de identidad y muestras; no arranca Mongo en este stack.</td></tr>
+      <tr><td><code>DRAX_MONGO_URI</code> · app, monitoring</td><td>URI hacia <code>mongo:27017/containerhub</code> por defecto; <code>CONTAINERHUB_MONGO_URI</code> permite otro destino/base. Ambos procesos deben hablar con la misma DB. El nombre <code>containerhub</code> difiere del <code>incartainer</code> legacy.</td></tr>
+      <tr><td><code>DRAX_PORT</code> · app</td><td>Puerto del backend, alineado con <code>target</code> y <code>published</code> mediante <code>CONTAINERHUB_PORT</code>.</td></tr>
+      <tr><td><code>CONTAINERHUB_HOST_VOLUME_ROOTS</code> · app, agent</td><td>Raíces absolutas permitidas: <code>CONTAINERHUB_STORAGE_ROOT</code>, <code>/logs</code> y <code>/localdata</code>. El CSV no crea mounts; el stack declara los tres bind mounts por separado.</td></tr>
+      <tr><td><code>CONTAINERHUB_BOOTSTRAP_ENABLED</code> · app, monitoring</td><td>En app el fallback es <code>false</code>; monitoring también fuerza <code>false</code>. Habilitarlo requiere configurar identidad y secreto en Vault explícitamente. La app crea el usuario Admin solo si aún no existe ese username; tras el alta inicial, deshabilitarlo en el servicio. No cambia contraseñas existentes.</td></tr>
+      <tr><td><code>CONTAINERHUB_BOOTSTRAP_NAME</code> · app</td><td>Nombre visible del usuario Admin inicial; sin valor por defecto.</td></tr>
+      <tr><td><code>CONTAINERHUB_BOOTSTRAP_USERNAME</code> · app</td><td>Login inicial; sin valor por defecto. La búsqueda por username evita duplicar ese usuario.</td></tr>
+      <tr><td><code>CONTAINERHUB_BOOTSTRAP_EMAIL</code> · app</td><td>Email inicial requerido por el contrato de creación de usuario; configurable.</td></tr>
+      <tr><td><code>CONTAINERHUB_BOOTSTRAP_PHONE</code> · app</td><td>Teléfono inicial requerido para crear el usuario; configurable.</td></tr>
+      <tr><td><code>TERMINAL_ALLOWED_ORIGIN</code> · app, monitoring</td><td>Origen exacto permitido para WebSocket de terminal; depende de <code>CONTAINERHUB_ORIGIN</code>. Aunque monitoring no ofrece terminal, el inicializador compartido lo valida en producción.</td></tr>
+      <tr><td><code>DOCKER_SOCKET_PATH</code> · los tres</td><td>Path interior de <code>docker.sock</code>: app/monitoring consultan el manager; agent consulta su worker. La variable y el bind deben coincidir.</td></tr>
+      <tr><td><code>DOCKER_DATA_PATH</code> · los tres</td><td>Path de trabajo local <code>/var/lib/containerhub</code> para aprovisionamiento relativo y protección del archivo de identidad SQLite en el código; no significa que este despliegue use SQLite como DB.</td></tr>
+      <tr><td><code>CONTAINERHUB_AGENT_HOST</code> · app, monitoring</td><td>Alias DNS <code>containerhub-agent</code> para localizar las tareas globales; no lo necesita el propio agente.</td></tr>
+      <tr><td><code>CONTAINERHUB_AGENT_PORT</code> · los tres</td><td><code>9997</code>: cliente y servidor deben coincidir; accesible solo en la red compartida, no como puerto publicado al host.</td></tr>
+      <tr><td><code>CONTAINERHUB_VAULT_URL</code> · app, monitoring</td><td>API de Vault, por defecto <code>http://vault:5000</code> en red externa; no usar localhost dentro de contenedor para apuntar al host.</td></tr>
+      <tr><td><code>CONTAINERHUB_VAULT_CLIENT_ID</code> · app, monitoring</td><td>Identificador del cliente Vault, por defecto <code>containerhub</code>; no es su contraseña.</td></tr>
+      <tr><td><code>CONTAINERHUB_VAULT_CLIENT_KEY_FILE</code> · app, monitoring</td><td>Path del archivo Docker secret con la clave del cliente Vault; el código lee su contenido antes de pedir JWT y API key.</td></tr>
+      <tr><td><code>CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID</code> · app</td><td>Identificador <em>no secreto</em> del secreto de contraseña inicial en Vault; sin valor por defecto. No es la contraseña. El loader lo solicita cuando hay ID, incluso si bootstrap se deshabilita por env: para desactivarlo, quitar también el ID del servicio.</td></tr>
+      <tr><td><code>REGISTRY_URL</code> · app</td><td>Base de la API Registry consumida por las pantallas de imágenes; la URL de fallback es específica de este entorno y no equivale a desplegar un registry.</td></tr>
+      <tr><td><code>GITLAB_URL</code> · app</td><td>Base de la API GitLab; la URL de fallback es específica del entorno.</td></tr>
+      <tr><td><code>GITLAB_TOKEN</code> · app</td><td>Credencial para las rutas GitLab; ya no existe un valor de prueba por defecto. Si no se configura, esas rutas devuelven error al invocarse; pasar un token real como env deja ese valor visible en la especificación para operadores con acceso a ella.</td></tr>
+      <tr><td><code>NODE_ID</code> · agent</td><td>Identificador del nodo inyectado por template Swarm; se informa al backend al consultar <code>/health</code>.</td></tr>
+    </tbody>
+  </table></div>
+  <p>En este archivo no hay servicio Redis, Mongo ni Vault: los dos últimos se alcanzan por la red externa; Redis no es dependencia declarada aquí. La ausencia de un servicio en este YAML <em>no</em> prueba que no exista en el stack compartido.</p>
+
+  <h2>Qué cambió respecto de <code>docker-fortes</code></h2>
+  <p>Comparación de definiciones de repositorio: <a href="../../docker-fortes/docker-compose.yml">legacy principal</a>, <a href="../../docker-fortes/docker-compose-dev.yml">legacy DEV</a> y <a href="../../docker-fortes/docker-compose-dev-local.yml">legacy DEV local</a>. Los enlaces legacy dependen de que ambos proyectos estén juntos; no prueban la configuración desplegada hoy. No se copian valores de credenciales.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Tema</th><th>Antes (principal; DEV si cambia)</th><th>Ahora</th><th>Por qué / juicio</th></tr></thead>
+    <tbody>
+      <tr><td>Imagen y procesos</td><td>Backend y monitorización comparten imagen Fortes; agente imagen separada. Monitoring usa <code>pm2-runtime</code>.</td><td>Backend+SPA y collector comparten imagen ContainerHub; agente aparte. Monitoring usa launcher Node.</td><td>Necesario por sustitución de implementación; separar procesos sigue siendo útil para ciclo de vida y métricas.</td></tr>
+      <tr><td>Nodos y agente</td><td>Agente global en Linux, incluso managers; app en manager. DEV local usa red externa <code>red_fortes</code>.</td><td>Agente global solo en workers, app y collector en manager; DNSRR sobre overlay propia.</td><td>Decisión de topología: manager usa su socket local; DNSRR permite elegir worker por ID. Sin worker disponible no hay prueba remota. Red compartida no autentica al cliente.</td></tr>
+      <tr><td>Puerto y entrada</td><td>App 9999:9999, modo ingress implícito.</td><td>App 9998:9998 con <code>mode: host</code>.</td><td>9998 permite coexistir con Fortes; host cambia routing: proxy al nodo que ejecuta la app. No es mejora universal. <a href="https://docs.docker.com/engine/swarm/ingress/#bypass-the-routing-mesh">Docker: consecuencias</a>.</td></tr>
+      <tr><td>Base y datos</td><td>Base <code>incartainer</code>; principal usa una IP, DEV resuelve <code>mongo</code>, DEV local usa replicaset.</td><td>Base por defecto <code>containerhub</code> a través de <code>mongo</code> en overlay externa.</td><td><strong>Pendiente funcional:</strong> no es la misma base predeterminada. Compartir usuarios legacy requiere URI efectiva y compatibilidad de datos probadas; no cambiarla a ciegas.</td></tr>
+      <tr><td>Paths y mounts</td><td><code>/localdata</code>, <code>/storage</code>, <code>/logs</code> en app y agentes; principal también monta media/logs relativos.</td><td>Raíz configurable (<code>/storage</code> por defecto), <code>/logs</code> y <code>/localdata</code> en app/agentes; volumen local de datos.</td><td>Los tres bind mounts deben existir en <em>cada</em> nodo elegible; esto no reproduce los mounts relativos adicionales del stack legacy.</td></tr>
+      <tr><td>Credenciales y red</td><td>JWT/GitLab/SMTP literales en el YAML legacy; monitor y app acceden a Mongo.</td><td>JWT y API key se consultan a Vault mediante un Docker secret externo; GitLab es variable sin token por defecto. Overlay separa agente de Mongo/Vault.</td><td>Mejora en gestión de JWT/API key y en retirar credenciales de prueba; la integración GitLab con env aún tiene límite de exposición. El agente sigue sin mTLS por decisión de alcance, no se debe presentar como canal autenticado.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Operar sin sorpresas</h2>
+  <ol>
+    <li>Antes de desplegar en un <em>stack aislado</em>, comprobar que las dos imágenes están disponibles en los nodos elegibles, que existe la overlay externa, que existe el Docker secret y que cada nodo tiene los bind mounts requeridos. En este archivo <code>external: true</code> significa que Docker no crea el secret por ti. <a href="https://docs.docker.com/engine/swarm/secrets/#defining-and-using-secrets-in-compose-files">Docker: secrets externos</a>.</li>
+    <li>Fijar <code>CONTAINERHUB_ORIGIN</code> a la URL real del navegador (HTTPS detrás de proxy en un entorno compartido), el puerto, la URI de Mongo correcta y los roots reales. El bootstrap está deshabilitado por defecto; para crear el primer usuario, habilitarlo explícitamente y configurar su identidad y secreto en Vault antes del despliegue.</li>
+    <li>Inspeccionar con comandos de solo lectura; estos evitan imprimir valores de variables o secretos:</li>
+  </ol>
+  <pre>docker compose -f docker-compose.yml config -q
+docker stack config -c docker-compose.yml &gt;/dev/null
+docker stack services dockerway --format '{{.Name}} {{.Replicas}}'
+docker node ls --format '{{.Hostname}} {{.Status}}'
+docker secret inspect containerhub-vault-client-key --format '{{.Spec.Name}}'</pre>
+  <p>Un cambio del servicio real requiere aprobación y ventana, no una aplicación automática de este YAML al stack compartido. Tras un despliegue autorizado verificar por separado: servicio app/collector corriendo, login con usuario existente, persistencia de una muestra, agente en <em>worker distinto</em> y terminal desde navegador. El render del compose solo prueba sintaxis; no demuestra esas capas.</p>
+  <div class="note"><p><strong>Estado y deuda, no tareas silenciosas:</strong> el 23/09/2026 <code>debianvm</code> estaba <code>Down</code> y el agente <code>0/0</code>, así que no se comprobó el camino remoto. El token GitLab que se retiró era de prueba, expirado y nunca pusheado según el usuario: no se planifica revocación. <code>README.md</code> y <code>docs/DEPLOYMENT.md</code> describen además otros modos de instalación; verificar la sección de stack antes de operar. El agente hoy usa HTTP/WS sin mTLS; la overlay no lo vuelve autenticado. El socket Docker conserva privilegios altos; Mongo legacy y mounts relativos adicionales no están cubiertos automáticamente.</p></div>
+  <p>También se quitó <code>docker-compose.override.yml</code>: agregaba servicios <code>app</code> y <code>agent</code> que no forman parte de este stack. Antes, <code>docker compose config --services</code> enumeraba cinco; ahora enumera solo estos tres. El stack siempre se invocaba con <code>-c docker-compose.yml</code>, así que ese override no formaba parte de su definición. <a href="https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/">Docker: combinación automática de archivos Compose</a>.</p>
+
+  <h2>Fuentes y naturaleza de la evidencia</h2>
+  <p><strong>Repositorio:</strong> <a href="../docker-compose.yml">YAML actual</a>, <code>Dockerfile</code>, <code>packages/containerhub-agent/src/server.ts</code>, <code>packages/containerhub-back/src/setup/VaultSecretLoader.ts</code> y los tres YAML de <code>docker-fortes</code> citados arriba. <strong>Plataforma:</strong> <a href="https://docs.docker.com/engine/swarm/stack-deploy/">Docker Stack</a>, <a href="https://docs.docker.com/engine/swarm/services/#give-a-service-access-to-volumes-or-bind-mounts">Swarm mounts</a>, <a href="https://docs.docker.com/engine/swarm/networking/#configure-service-discovery">DNSRR</a>, <a href="https://docs.docker.com/engine/swarm/ingress/#bypass-the-routing-mesh">host publish</a>, <a href="https://docs.docker.com/engine/swarm/secrets/#how-docker-manages-secrets">secrets</a> e <a href="https://docs.docker.com/reference/compose-file/interpolation/">interpolación</a>. <strong>Runtime observado:</strong> inventario de servicios/nodos y validación del YAML; no hay prueba UI ni E2E de worker.</p>
+</main>
+</body>
+</html>

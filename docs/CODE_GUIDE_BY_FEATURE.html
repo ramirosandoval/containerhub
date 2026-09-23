@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ContainerHub · Código por pantalla y funcionalidad</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.58 system-ui, sans-serif; }
+    body { max-width: 1080px; margin: auto; padding: clamp(1rem, 3vw, 2rem); }
+    h1, h2, h3 { line-height: 1.22; }
+    h2 { margin-top: 2.7rem; border-bottom: 1px solid #8995a755; padding-bottom: .4rem; }
+    h3 { margin: 1.5rem 0 .35rem; }
+    p { margin: .6rem 0; }
+    a { color: #2769bb; }
+    @media (prefers-color-scheme: dark) { a { color: #91bfff; } }
+    code, pre { font: .93em/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    code { overflow-wrap: anywhere; }
+    pre { border: 1px solid #8995a755; border-radius: .5rem; padding: 1rem; overflow-x: auto; }
+    .muted { opacity: .76; }
+    .flow { border-left: 3px solid #4a86cd; padding: .35rem 1rem; margin: .7rem 0; }
+    .note { border-left: 3px solid #b77a24; padding: .35rem 1rem; margin: .8rem 0; }
+    .path { font-size: .91rem; overflow-wrap: anywhere; }
+    .toc { columns: 2; column-width: 18rem; padding-left: 1.5rem; }
+    .toc li { break-inside: avoid; margin: .2rem 0; }
+    .feature { padding-bottom: 1.15rem; border-bottom: 1px solid #8995a733; }
+    .feature:last-child { border: 0; }
+    .tag { font-size: .82rem; border: 1px solid #8995a777; border-radius: 1em; padding: .1rem .5rem; white-space: nowrap; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 600px; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid #8995a755; padding: .65rem; }
+    @media (max-width: 600px) { .toc { columns: 1; } }
+  </style>
+</head>
+<body><main>
+  <h1>ContainerHub: el código, pantalla por pantalla</h1>
+  <p class="muted">Guía de lectura del árbol de trabajo · 23 de septiembre de 2026 · Sin modificar la aplicación. Complementa la <a href="COMPOSE_GUIDE.html">guía de despliegue</a>.</p>
+  <p><strong>Idea central:</strong> una pantalla Vue presenta datos; un <em>provider</em> traduce paginación y filtros a peticiones; Fastify comprueba permisos y entrega trabajo a servicios que leen Docker o integraciones externas. Las configuraciones de identidad y monitorización se guardan en la base configurada. Aquí se explica <em>qué ruta hace qué</em> y dónde seguir el flujo, no cada línea de sintaxis.</p>
+  <nav aria-label="Índice"><h2>Índice</h2><ol class="toc">
+    <li><a href="#mapa">Mapa y vocabulario</a></li><li><a href="#arranque">Arranque y límites de seguridad</a></li>
+    <li><a href="#inicio">Inicio y navegación</a></li><li><a href="#identidad">Login, usuarios y administración</a></li>
+    <li><a href="#stacks">Stacks</a></li><li><a href="#servicios">Servicios y tareas</a></li>
+    <li><a href="#detalle-tarea">Inspección, estadísticas, logs y terminal</a></li>
+    <li><a href="#infra">Nodos, redes, cluster y contenedores huérfanos</a></li>
+    <li><a href="#integraciones">Registry y GitLab</a></li><li><a href="#monitorizacion">Monitorización</a></li>
+    <li><a href="#configuracion">Configuración</a></li><li><a href="#mantener">Dónde empezar a cambiar algo</a></li>
+  </ol></nav>
+
+  <section id="mapa"><h2>Mapa y vocabulario</h2>
+    <pre>URL del navegador → router de Vue → página/componente
+                                  ↓
+                           provider / rest.ts
+                                  ↓ HTTP o WebSocket
+                           ruta Fastify + permiso
+                                  ↓
+                         servicio de dominio → Docker / agente / GitLab / Registry / base de datos</pre>
+    <p><strong>Stack:</strong> grupo de servicios etiquetados por Swarm. <strong>Servicio:</strong> especificación que Docker mantiene con sus réplicas. <strong>Tarea:</strong> intento concreto de ejecutar una réplica en un nodo; puede quedar en el historial. <strong>Agente:</strong> proceso en cada worker elegible que permite consultar el Docker daemon de ese nodo. <strong>CRUD:</strong> aquí suele significar tabla/configuración reutilizable de Drax, <em>no</em> permiso implícito de crear o borrar: varias tablas son solo de lectura.</p>
+    <p class="path">Punto de entrada visual: <a href="../packages/containerhub-front/src/router/index.ts"><code>packages/containerhub-front/src/router/index.ts</code></a> y <a href="../packages/containerhub-front/src/navigation.ts"><code>packages/containerhub-front/src/navigation.ts</code></a>. Frontend: <code>packages/containerhub-front/src/</code>; backend: <code>packages/containerhub-back/src/</code>; agente: <code>packages/containerhub-agent/src/</code>.</p>
+    <p class="note"><strong>Regla para leer esta guía:</strong> «la pantalla permite» describe botones visibles según permiso; «el endpoint permite» describe la autorización en el servidor. Son capas distintas. Las afirmaciones son lectura de código, no prueba de operación en un cluster real.</p>
+  </section>
+
+  <section id="arranque"><h2>Arranque y límites de seguridad</h2>
+    <p>El backend llama a <a href="../packages/containerhub-back/src/setup/SetupContainerHub.ts"><code>SetupContainerHub.ts</code></a> antes de aceptar peticiones; inicializa conexiones/identidad y, si se habilita, el usuario inicial. <a href="../packages/containerhub-back/src/index.ts"><code>index.ts</code></a> crea Fastify, opcionalmente sirve el frontend compilado, inicia el manager de registros de tareas y abre el puerto. El recolector de métricas tiene una entrada separada: <a href="../packages/containerhub-back/src/monitoring.ts"><code>monitoring.ts</code></a>. El agente es otro proceso: <a href="../packages/containerhub-agent/src/server.ts"><code>agent/src/server.ts</code></a>.</p>
+    <p>El servidor en <a href="../packages/containerhub-back/src/factories/YogaFastifyServerFactory.ts"><code>YogaFastifyServerFactory.ts</code></a> registra REST, GraphQL, WebSocket, identidad, auditoría, ajustes e integraciones. Ejecuta middleware de JWT, API key y RBAC; cada ruta local sensible exige un permiso propio. GraphQL combina los archivos <code>.graphql</code> y <code>.resolvers.ts</code> de <code>modules/</code> mediante <a href="../packages/containerhub-back/src/factories/GraphQLSchema.ts"><code>GraphQLSchema.ts</code></a>; la mayoría de pantallas operativas de esta guía llaman a REST. <strong>Ojo:</strong> <a href="../packages/containerhub-back/src/servers/YogaFastifyServer.ts"><code>YogaFastifyServer.ts</code></a> instala un validador Fastify que siempre acepta; el esquema de OpenAPI no demuestra por sí solo que se valide la entrada. Hay que comprobar validación explícita en cada servicio.</p>
+    <p>En el navegador, <a href="../packages/containerhub-front/src/main.ts"><code>main.ts</code></a> prepara Pinia, entidades, i18n, Vuetify y el router; <a href="../packages/containerhub-front/src/setup/SetupEntities.ts"><code>SetupEntities.ts</code></a> registra las tablas. <a href="../packages/containerhub-front/src/rest.ts"><code>rest.ts</code></a> agrega el token de acceso a llamadas REST. El router exige sesión válida y redirige si falta un permiso, pero la barrera efectiva está también en Fastify: ocultar un botón no protege el endpoint.</p>
+  </section>
+
+  <section id="inicio"><h2>Inicio y navegación</h2>
+    <article class="feature"><h3>Inicio <code>/</code> <span class="tag">sesión</span></h3>
+      <p>La portada <a href="../packages/containerhub-front/src/pages/HomePage.vue"><code>HomePage.vue</code></a> muestra la galería de <a href="../packages/containerhub-front/src/components/HomeGallery.vue"><code>HomeGallery.vue</code></a>. Sus entradas nacen en <a href="../packages/containerhub-front/src/navigation.ts"><code>navigation.ts</code></a>; no es un inventario propio de Docker. <a href="../packages/containerhub-front/src/App.vue"><code>App.vue</code></a> reutiliza el mismo menú en el lateral, con perfil, cambio de tema y salida.</p>
+      <p class="flow">Navegación → guardia del router → componente de la página. Añadir una página requiere registrar <em>ruta</em> y, si debe aparecer en la interfaz, <em>menú</em>; definir solo el menú no crea su endpoint.</p>
+    </article>
+  </section>
+
+  <section id="identidad"><h2>Login y administración de identidad</h2>
+    <article class="feature"><h3>Login <code>/login</code> <span class="tag">público</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/LoginPage.vue"><code>LoginPage.vue</code></a> envuelve <code>IdentityLogin</code> de <code>@drax/identity-vue</code>; al entrar, vuelve a la ruta solicitada si el redirect es una ruta local válida. El guardia en <a href="../packages/containerhub-front/src/router/index.ts"><code>router/index.ts</code></a> verifica usuario, token y vigencia del JWT. El backend registra las rutas de identidad importadas de <code>@drax/identity-back</code> en <a href="../packages/containerhub-back/src/factories/YogaFastifyServerFactory.ts"><code>YogaFastifyServerFactory.ts</code></a>.</p>
+    </article>
+    <article class="feature"><h3>Usuarios, roles, claves API y sesiones <span class="tag">administración</span></h3>
+      <p>Las pantallas y rutas de identidad se importan de <code>@drax/identity-vue</code> mediante <code>IdentityRoutes</code> en <a href="../packages/containerhub-front/src/router/index.ts"><code>router/index.ts</code></a>; el menú en <a href="../packages/containerhub-front/src/navigation.ts"><code>navigation.ts</code></a> agrega Usuarios, Roles, Claves API y Sesiones. El proyecto excluye la ruta de tenants. Las rutas de servidor <code>UserRoutes</code>, <code>RoleRoutes</code>, <code>UserSessionRoutes</code>, <code>UserLoginFailRoutes</code> y <code>UserApiKeyRoutes</code> también vienen de Drax. <strong>No atribuir su lógica interna a archivos locales de ContainerHub.</strong></p>
+      <p>Los roles asignan permisos; la UI pregunta <code>hasPermission</code>, mientras el servidor vuelve a comprobar con el middleware RBAC o <code>requirePermission</code>. Para entender una operación administrativa concreta hay que seguir el paquete Drax instalado, además de estos puntos de integración.</p>
+    </article>
+    <article class="feature"><h3>Auditoría <code>/crud/audit</code> <span class="tag">audit:manage</span></h3>
+      <p>La página <code>AuditCrudPage</code> y el descriptor <code>AuditCrud</code> proceden de <code>@drax/audit-vue</code>; el backend registra <code>AuditRoutes</code> de <code>@drax/audit-back</code> en <a href="../packages/containerhub-back/src/factories/YogaFastifyServerFactory.ts"><code>YogaFastifyServerFactory.ts</code></a>. Para mutaciones de servicios y redes, ContainerHub arma el contexto de auditoría en <a href="../packages/containerhub-back/src/modules/services/services/ServiceMutationAudit.ts"><code>ServiceMutationAudit.ts</code></a>. Si falla la persistencia de auditoría se registra el error, pero no se revierte la mutación Docker. No confundir este registro con los logs de consola de una tarea.</p>
+    </article>
+  </section>
+
+  <section id="stacks"><h2>Stacks <code>/stacks</code> <span class="tag">DOCKER_VIEW</span></h2>
+    <p><a href="../packages/containerhub-front/src/pages/StacksPage.vue"><code>StacksPage.vue</code></a> usa la tabla de Drax; <a href="../packages/containerhub-front/src/cruds/StacksCrud.ts"><code>StacksCrud.ts</code></a> obtiene <code>GET /api/services</code>, agrupa por la propiedad <code>stack</code> de cada servicio y cuenta miembros. El botón abre <code>/services?stack=…</code>. El backend obtiene servicios Docker en <a href="../packages/containerhub-back/src/modules/services/routes/ServiceRoutes.ts"><code>ServiceRoutes.ts</code></a> → <a href="../packages/containerhub-back/src/modules/services/services/ServiceService.ts"><code>ServiceService.ts</code></a>.</p>
+    <p class="note">No hay un modelo «Stack» almacenado por esta página: la lista se <em>deriva</em> de los servicios devueltos. Si un stack no tiene servicios visibles, no aparece. No crea, edita ni elimina stacks; búsqueda, orden y CSV se resuelven en el navegador.</p>
+  </section>
+
+  <section id="servicios"><h2>Servicios y tareas <code>/services</code> <span class="tag">DOCKER_VIEW</span></h2>
+    <p><a href="../packages/containerhub-front/src/pages/services/ServicesPage.vue"><code>ServicesPage.vue</code></a> es una tabla operativa propia; <a href="../packages/containerhub-front/src/cruds/ServiceCrud.ts"><code>ServiceCrud.ts</code></a> define columnas, filtros y paginación mediante <code>GET /api/services/paginate</code>. Fastify <a href="../packages/containerhub-back/src/modules/services/routes/ServiceRoutes.ts"><code>ServiceRoutes.ts</code></a> procesa la consulta y llama a <code>paginateServices</code> en <a href="../packages/containerhub-back/src/modules/services/services/ServiceService.ts"><code>ServiceService.ts</code></a>. Al expandir una fila, la página carga tareas de ese servicio, estados y nodo.</p>
+    <p class="flow">Seleccionar servicios → confirmar reinicio/eliminación → <code>POST /api/docker/service/restart</code> o <code>POST /api/docker/service/remove</code> → servicio de Docker → resultados por servicio. La interfaz exige <code>DOCKER_RESTART</code> / <code>DOCKER_REMOVE</code>, y las rutas vuelven a exigirlos; el descriptor CRUD de listado no habilita un formulario de alta o edición.</p>
+    <p>El backend sí expone operaciones de creación/actualización y rutas auxiliares para compatibilidad; su existencia <strong>no</strong> implica que esta pantalla las ofrezca. Seguir <a href="../packages/containerhub-back/src/modules/services/services/ServiceMutationAudit.ts"><code>ServiceMutationAudit.ts</code></a> para quién/qué registra cada mutación. <a href="../packages/containerhub-back/src/modules/services/helpers/mapInspectToServiceModel.ts"><code>mapInspectToServiceModel.ts</code></a> adapta datos crudos de Docker al contrato presentado. Las tareas retenidas no equivalen a réplicas actualmente en marcha.</p>
+  </section>
+
+  <section id="detalle-tarea"><h2>Una tarea: inspección, métricas, logs y terminal</h2>
+    <article class="feature"><h3>Inspección <code>/inspect/:taskId</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/services/TaskInspectPage.vue"><code>TaskInspectPage.vue</code></a> pide <code>GET /api/docker/task/:taskId/inspect</code>, organiza la respuesta como árbol en <a href="../packages/containerhub-front/src/pages/services/taskInspectTree.ts"><code>taskInspectTree.ts</code></a> y puede buscar el servicio relacionado para completar contexto. <a href="../packages/containerhub-back/src/modules/services/routes/ServiceRoutes.ts"><code>ServiceRoutes.ts</code></a> pasa a <code>fetchTaskInspect</code> una opción de visibilidad: ver configuración sensible requiere además <code>DOCKER_CONFIGURATION_VIEW</code>. Leer una tarea no implica poder revelar sus secretos.</p>
+    </article>
+    <article class="feature"><h3>Estadísticas actuales <code>/statistics/:taskId</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/services/TaskStatisticsPage.vue"><code>TaskStatisticsPage.vue</code></a> consulta <code>GET /api/docker/task/:taskId/stats</code>; <a href="../packages/containerhub-front/src/pages/services/taskStatistics.ts"><code>taskStatistics.ts</code></a> compone muestras y sparklines. El botón se muestra solo para tareas en ejecución con contenedor. La ruta del backend delega en <code>fetchTaskStats</code>; si la tarea vive en otro nodo, el camino atraviesa el agente. Los puntos de la gráfica son estado local de la UI mientras se consulta; para histórico persistido, ver Monitorización.</p>
+    </article>
+    <article class="feature"><h3>Logs en vivo <code>/logs/:taskId</code> <span class="tag">DOCKER_LOGS</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/logs/TaskLogsPage.vue"><code>TaskLogsPage.vue</code></a> abre <code>/api/docker/task/:taskId/logs/stream</code> por WebSocket. Envía filtros de tiempo, inclusión/exclusión, timestamps y número de líneas; <a href="../packages/containerhub-back/src/modules/services/routes/ServiceRoutes.ts"><code>ServiceRoutes.ts</code></a> limita la cola según Ajustes y llama a <code>streamTaskLogs</code>. <a href="../packages/containerhub-front/src/components/logs/LogTerminal.vue"><code>LogTerminal.vue</code></a> representa el flujo. Cambiar filtros reconecta y limpia el visor; pausar cierra el socket, no detiene Docker. La página consulta también <code>GET /api/settings</code>, que requiere <code>SETTINGS_SHOW</code>; si no tiene ese acceso, continúa con el límite local.</p>
+    </article>
+    <article class="feature"><h3>Terminal interactiva <code>/terminal/:taskId</code> <span class="tag">DOCKER_TERMINAL</span></h3>
+      <p>La pantalla <a href="../packages/containerhub-front/src/pages/services/TaskTerminalPage.vue"><code>TaskTerminalPage.vue</code></a> usa xterm: un POST autorizado entrega un ticket de un solo uso que vence a los 60 segundos; el navegador lo presenta por subprotocolo WebSocket a <code>/api/docker/terminal</code>. <a href="../packages/containerhub-back/src/modules/services/routes/TerminalRoutes.ts"><code>TerminalRoutes.ts</code></a> comprueba origen, ticket y límites de tamaño/tiempo; el socket se autentica con el ticket, no con la cadena JWT/RBAC ordinaria. <a href="../packages/containerhub-back/src/modules/services/services/TerminalSessionService.ts"><code>TerminalSessionService.ts</code></a> custodia tickets en memoria de <em>un proceso</em>; el backend abre un exec en la tarea local o vía <a href="../packages/containerhub-back/src/modules/services/services/AgentTerminalClient.ts"><code>AgentTerminalClient.ts</code></a>. Recargar directamente la página pierde el ticket del navegador. <strong>No</strong> es un shell del servidor web: ejecuta comandos en el contenedor de la tarea; su permiso es de alto riesgo.</p>
+    </article>
+  </section>
+
+  <section id="infra"><h2>Infraestructura Docker</h2>
+    <article class="feature"><h3>Nodos <code>/nodes</code> <span class="tag">DOCKER_NODES_FETCH</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/NodesPage.vue"><code>NodesPage.vue</code></a> muestra el CRUD de <a href="../packages/containerhub-front/src/cruds/NodesCrud.ts"><code>NodesCrud.ts</code></a>: <code>GET /api/docker/nodes</code> y filtros, orden, paginación y CSV en cliente. <a href="../packages/containerhub-back/src/modules/services/services/ServiceService.ts"><code>ServiceService.ts</code></a> consulta Docker y compone rol, recursos, estado y salud del agente donde corresponda. Solo lectura; «agente no saludable» y «sin agente» no son lo mismo.</p>
+    </article>
+    <article class="feature"><h3>Redes <code>/networks</code> <span class="tag">DOCKER_NETWORK_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/NetworksPage.vue"><code>NetworksPage.vue</code></a> muestra datos de <code>GET /api/docker/network</code> mediante <a href="../packages/containerhub-front/src/cruds/NetworksCrud.ts"><code>NetworksCrud.ts</code></a>. La UI formatea creación, attachable y valores IPAM; filtros y CSV se aplican localmente. Router y endpoint requieren <code>DOCKER_NETWORK_VIEW</code>, aunque el descriptor CRUD declara <code>DOCKER_VIEW</code>: no son permisos equivalentes. Aunque <a href="../packages/containerhub-back/src/modules/services/routes/ServiceRoutes.ts"><code>ServiceRoutes.ts</code></a> tenga endpoints de mutación de redes para otros clientes, <strong>esta pantalla no los expone</strong>.</p>
+    </article>
+    <article class="feature"><h3>Cluster <code>/cluster</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/ClusterInformationPage.vue"><code>ClusterInformationPage.vue</code></a> pide <code>/api/docker/cluster</code> para contadores y <code>/api/docker/nodes-and-tasks</code> para <a href="../packages/containerhub-front/src/pages/cluster/ClusterVisualizer.vue"><code>ClusterVisualizer.vue</code></a>. <a href="../packages/containerhub-front/src/pages/cluster/RefreshOptions.vue"><code>RefreshOptions.vue</code></a> activa refresco opcional del <em>visualizador</em> y selección de tareas en ejecución; el timer se cancela al salir y no vuelve a cargar el resumen. El contador de tareas incluye también tareas históricas retenidas por Docker, no solo activas.</p>
+    </article>
+    <article class="feature"><h3>Contenedores «fantasma» <code>/ghost-containers</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/GhostContainersPage.vue"><code>GhostContainersPage.vue</code></a> usa <a href="../packages/containerhub-front/src/cruds/GhostContainersCrud.ts"><code>GhostContainersCrud.ts</code></a> y <code>GET /api/docker/ghostContainers</code>. El backend reúne contenedores en ejecución del manager y los workers disponibles, y excluye los asociados a tareas Swarm <code>running</code> cuyo ID de contenedor coincida. También descarta contenedores con etiquetas pero sin ID de tarea. Omite nodos que Docker informa <code>down</code>; si falla un agente de otro nodo, devuelve 503 en vez de una lista parcial. Muestra nodo, imagen y estado; busca y exporta CSV. La pantalla es solo lectura: leer la definición en <a href="../packages/containerhub-back/src/modules/services/services/ServiceService.ts"><code>ServiceService.ts</code></a> antes de interpretar una fila como error.</p>
+    </article>
+  </section>
+
+  <section id="integraciones"><h2>Integraciones: Registry y GitLab</h2>
+    <article class="feature"><h3>Imágenes Registry <code>/registry-images</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/RegistryImagesPage.vue"><code>RegistryImagesPage.vue</code></a> y <a href="../packages/containerhub-front/src/cruds/RegistryImagesCrud.ts"><code>RegistryImagesCrud.ts</code></a> listan repositorios; al expandir, <a href="../packages/containerhub-front/src/components/RegistryImageDetails.vue"><code>RegistryImageDetails.vue</code></a> carga etiquetas/detalles de imagen y los relaciona con servicios desplegados. <a href="../packages/containerhub-back/src/modules/registry/routes/RegistryRoutes.ts"><code>RegistryRoutes.ts</code></a> sirve peticiones a través de <a href="../packages/containerhub-back/src/modules/registry/services/RegistryService.ts"><code>RegistryService.ts</code></a>. El Registry es externo: verlo aquí no implica que ContainerHub almacene esas imágenes.</p>
+    </article>
+    <article class="feature"><h3>Proyectos GitLab <code>/gitlab-projects</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/GitLabProjectsPage.vue"><code>GitLabProjectsPage.vue</code></a> y <a href="../packages/containerhub-front/src/cruds/GitLabProjectsCrud.ts"><code>GitLabProjectsCrud.ts</code></a> listan proyectos; expandir consulta tags, y elegir uno muestra su pipeline asociado y despliegues que coinciden con servicios Docker. El enlace externo abre GitLab; el enlace interno abre el Registry. <a href="../packages/containerhub-back/src/modules/gitlab/routes/GitLabRoutes.ts"><code>GitLabRoutes.ts</code></a> delega en <a href="../packages/containerhub-back/src/modules/gitlab/services/GitLabService.ts"><code>GitLabService.ts</code></a>. Si falta token o falla GitLab, el contenido dependiente no se obtiene: no confundir integración caída con ausencia real de proyectos.</p>
+    </article>
+  </section>
+
+  <section id="monitorizacion"><h2>Monitorización: configuración, muestras e historial</h2>
+    <article class="feature"><h3>Monitoreos <code>/monitoring</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/MonitoringPage.vue"><code>MonitoringPage.vue</code></a> lista configuraciones, permite seleccionar servicios e intervalo/tipo/período y, con permisos específicos, crear, pausar, reanudar o borrar. <a href="../packages/containerhub-front/src/cruds/MonitoringCrud.ts"><code>MonitoringCrud.ts</code></a> es el contrato de tabla y provider; <a href="../packages/containerhub-back/src/modules/monitoring/routes/MonitoringRoutes.ts"><code>MonitoringRoutes.ts</code></a> autoriza y valida cada operación; <a href="../packages/containerhub-back/src/modules/monitoring/services/MonitoringService.ts"><code>MonitoringService.ts</code></a> conserva configuraciones en la base configurada.</p>
+      <p class="flow">Crear configuración → persistir → <a href="../packages/containerhub-back/src/monitoring.ts"><code>monitoring.ts</code></a> inicia el proceso separado → <a href="../packages/containerhub-back/src/modules/monitoring/services/MonitoringWorker.ts"><code>MonitoringWorker.ts</code></a> espera señales de cierre → <a href="../packages/containerhub-back/src/modules/monitoring/services/MonitoringCollector.ts"><code>MonitoringCollector.ts</code></a> consulta configuraciones cada segundo y, cuando corresponde por estado, fecha e intervalo, obtiene estadísticas y guarda muestras. Crear una fila no es una medición instantánea. El recolector puede usar el agente para tareas remotas; su próxima ejecución por configuración vive en memoria del proceso.</p>
+    </article>
+    <article class="feature"><h3>Historial <code>/monitoring/:id</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/MonitoringHistoryPage.vue"><code>MonitoringHistoryPage.vue</code></a> pide configuración y <code>/api/monitoring-configurations/:id/samples</code>. Envía rango y límite al servidor; filtra la tarea entre las muestras <em>ya recibidas</em>. Convierte bytes y construye gráficos SVG de CPU, memoria, I/O y red. <a href="../packages/containerhub-back/src/modules/monitoring/routes/MonitoringRoutes.ts"><code>MonitoringRoutes.ts</code></a> → <a href="../packages/containerhub-back/src/modules/monitoring/services/MonitoringSampleService.ts"><code>MonitoringSampleService.ts</code></a>. El gráfico muestra muestras almacenadas sin refresco automático; no garantiza continuidad si el recolector estuvo apagado.</p>
+    </article>
+    <article class="feature"><h3>Historial de tareas <code>/tasks-monitorization</code> <span class="tag">DOCKER_VIEW</span></h3>
+      <p><a href="../packages/containerhub-front/src/pages/TasksMonitorizationPage.vue"><code>TasksMonitorizationPage.vue</code></a> y <a href="../packages/containerhub-front/src/cruds/TaskMonitorizationCrud.ts"><code>TaskMonitorizationCrud.ts</code></a> consultan <code>GET /api/task-monitorizations</code> con paginación del servidor. <a href="../packages/containerhub-back/src/modules/monitoring/services/TaskMonitorizationManager.ts"><code>TaskMonitorizationManager.ts</code></a> sondea tareas Swarm, genera registros <code>running</code>/<code>removed</code>, los guarda y poda según Ajustes. <code>modifiedBy</code> se infiere de auditorías recientes: es una heurística, no una atribución demostrada. Es un historial de ciclo de vida de tareas, distinto de las muestras de rendimiento; la página es solo lectura.</p>
+    </article>
+  </section>
+
+  <section id="configuracion"><h2>Configuración <code>/settings</code> <span class="tag">SETTINGS_SHOW</span></h2>
+    <p><a href="../packages/containerhub-front/src/pages/settings/SettingsPage.vue"><code>SettingsPage.vue</code></a> carga y guarda por <a href="../packages/containerhub-front/src/providers/SettingsApi.ts"><code>SettingsApi.ts</code></a> → <code>GET/PUT /api/settings</code> en <a href="../packages/containerhub-back/src/modules/settings/routes/SettingsRoutes.ts"><code>SettingsRoutes.ts</code></a> → <a href="../packages/containerhub-back/src/modules/settings/services/SettingsService.ts"><code>SettingsService.ts</code></a>. Los campos son máximo de líneas de logs, número de tareas retenidas e intervalo de monitorización de tareas. La lectura requiere <code>SETTINGS_SHOW</code>; guardar requiere <code>SETTINGS_UPDATE</code>, incluso si la página se puede abrir sin este último.</p>
+    <p class="note">No son variables Docker Compose: son ajustes de aplicación leídos por rutas y procesos. Cambiar un campo en el navegador no actualiza el YAML de despliegue.</p>
+  </section>
+
+  <section id="mantener"><h2>Cómo seguir el código sin perderse</h2>
+    <div class="table-wrap"><table><thead><tr><th>Si necesitas…</th><th>Empezá por…</th><th>Después comprobá…</th></tr></thead><tbody>
+      <tr><td>Agregar una página</td><td><a href="../packages/containerhub-front/src/router/index.ts"><code>router/index.ts</code></a> y <a href="../packages/containerhub-front/src/navigation.ts"><code>navigation.ts</code></a></td><td>Permiso y endpoint en el servidor; traducciones e identificación en <code>SetupEntities.ts</code> si usa tabla.</td></tr>
+      <tr><td>Cambiar un listado</td><td>El <code>Page.vue</code> y su <code>cruds/*Crud.ts</code></td><td>Si el filtrado/paginación es cliente (Stacks, Nodos, Redes) o servidor (Servicios, Monitoreos, Historial de tareas).</td></tr>
+      <tr><td>Cambiar Docker</td><td><a href="../packages/containerhub-back/src/modules/services/routes/ServiceRoutes.ts"><code>ServiceRoutes.ts</code></a> y <a href="../packages/containerhub-back/src/modules/services/services/ServiceService.ts"><code>ServiceService.ts</code></a></td><td>Permisos, normalización Docker y acceso a agente en worker; no confiar solo en la UI.</td></tr>
+      <tr><td>Cambiar acceso/seguridad</td><td><a href="../packages/containerhub-back/src/factories/YogaFastifyServerFactory.ts"><code>YogaFastifyServerFactory.ts</code></a> y paquete Drax de identidad</td><td>Guardia visual, middleware y permiso del endpoint específico; sin agregar secretos al HTML.</td></tr>
+      <tr><td>Cambiar recolección</td><td><a href="../packages/containerhub-back/src/monitoring.ts"><code>monitoring.ts</code></a>, <a href="../packages/containerhub-back/src/modules/monitoring/services/MonitoringWorker.ts"><code>MonitoringWorker.ts</code></a></td><td>Persistencia de configuración y muestras, cadencia del proceso separado y tareas remotas.</td></tr>
+    </tbody></table></div>
+    <p><strong>Alcance de la evidencia:</strong> inspección de fuentes y enlaces locales del árbol de trabajo. Este documento no ejecuta peticiones a Docker, Mongo, GitLab o Registry, ni prueba permisos desde un navegador autenticado. Los paquetes Drax aportan implementación que no está reexplicada aquí; las dependencias se identifican por sus puntos de integración locales. Ningún secreto se incluye en el documento.</p>
+  </section>
+</main></body></html>
