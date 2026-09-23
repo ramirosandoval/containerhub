@@ -12,6 +12,7 @@ import {
 import type {IUserCreate} from '@drax/identity-share'
 import {AuditPermissions} from '@drax/audit-back'
 import {DockerPermissions, dockerPermissions} from '../modules/services/permissions/DockerPermissions.js'
+import {loadContainerHubSecretsFromVault} from './VaultSecretLoader.js'
 
 const bootstrapEnabledEnvironmentVariable = 'CONTAINERHUB_BOOTSTRAP_ENABLED'
 const auditPermissions = Object.values(AuditPermissions)
@@ -145,6 +146,7 @@ export function validateContainerHubEnvironment(environment: NodeJS.ProcessEnv =
 }
 
 export async function initializeContainerHubRuntime(): Promise<void> {
+    await loadContainerHubSecretsFromVault()
     validateContainerHubEnvironment()
     LoadCommonConfigFromEnv()
     LoadIdentityConfigFromEnv()

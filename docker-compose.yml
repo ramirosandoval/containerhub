@@ -1,41 +1,44 @@
 services:
   containerhub:
     image: ${CONTAINERHUB_IMAGE:-192.168.122.1:5000/containerhub:0.0.2}
-    command:
-      - sh
-      - -eu
-      - -c
-      - |
-        export DRAX_JWT_SECRET="$$(cat /run/secrets/containerhub-test-jwt)"
-        export DRAX_APIKEY_SECRET="$$(cat /run/secrets/containerhub-test-api-key)"
-        export CONTAINERHUB_BOOTSTRAP_PASSWORD="$$(cat /run/secrets/containerhub-test-bootstrap-password)"
-        exec node packages/containerhub-back/dist/index.js
     environment:
       DRAX_DB_ENGINE: mongo
       DRAX_MONGO_URI: ${CONTAINERHUB_MONGO_URI:-mongodb://mongo:27017/containerhub}
       DRAX_PORT: ${CONTAINERHUB_PORT:-9998}
-      CONTAINERHUB_HOST_VOLUME_ROOTS: ${CONTAINERHUB_STORAGE_ROOT:-/storage}
+
+      CONTAINERHUB_HOST_VOLUME_ROOTS: ${CONTAINERHUB_STORAGE_ROOT:-/storage},/logs,/localdata
       CONTAINERHUB_BOOTSTRAP_ENABLED: ${CONTAINERHUB_BOOTSTRAP_ENABLED:-false}
-      CONTAINERHUB_BOOTSTRAP_NAME: ${CONTAINERHUB_BOOTSTRAP_NAME:-containerhub-test}
-      CONTAINERHUB_BOOTSTRAP_USERNAME: ${CONTAINERHUB_BOOTSTRAP_USERNAME:-containerhubtest}
-      CONTAINERHUB_BOOTSTRAP_EMAIL: ${CONTAINERHUB_BOOTSTRAP_EMAIL:-containerhub-test@example.invalid}
-      CONTAINERHUB_BOOTSTRAP_PHONE: ${CONTAINERHUB_BOOTSTRAP_PHONE:-+15555550100}
+      CONTAINERHUB_BOOTSTRAP_NAME: ${CONTAINERHUB_BOOTSTRAP_NAME:-}
+      CONTAINERHUB_BOOTSTRAP_USERNAME: ${CONTAINERHUB_BOOTSTRAP_USERNAME:-}
+      CONTAINERHUB_BOOTSTRAP_EMAIL: ${CONTAINERHUB_BOOTSTRAP_EMAIL:-}
+      CONTAINERHUB_BOOTSTRAP_PHONE: ${CONTAINERHUB_BOOTSTRAP_PHONE:-}
+
+
       TERMINAL_ALLOWED_ORIGIN: ${CONTAINERHUB_ORIGIN:-http://localhost:9998}
       DOCKER_SOCKET_PATH: /var/run/docker.sock
       DOCKER_DATA_PATH: /var/lib/containerhub
+
       CONTAINERHUB_AGENT_HOST: containerhub-agent
       CONTAINERHUB_AGENT_PORT: 9997
+
+      CONTAINERHUB_VAULT_URL: ${CONTAINERHUB_VAULT_URL:-http://vault:5000}
+      CONTAINERHUB_VAULT_CLIENT_ID: ${CONTAINERHUB_VAULT_CLIENT_ID:-containerhub}
+      CONTAINERHUB_VAULT_CLIENT_KEY_FILE: /run/secrets/containerhub-vault-client-key
+      CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID: ${CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID:-}
+      REGISTRY_URL: ${REGISTRY_URL:-https://sndregistry.sondeosglobal.com/v2/}
+      GITLAB_URL: ${GITLAB_URL:-http://git.snd.int/api/v4/}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
     networks:
       - containerhub-agent-network
       - containerhub-mongo-network
     secrets:
-      - containerhub-test-jwt
-      - containerhub-test-api-key
-      - containerhub-test-bootstrap-password
+      - containerhub-vault-client-key
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - containerhub-data:/var/lib/containerhub
       - ${CONTAINERHUB_STORAGE_ROOT:-/storage}:${CONTAINERHUB_STORAGE_ROOT:-/storage}
+      - /logs:/logs
+      - /localdata:/localdata
     ports:
       - target: ${CONTAINERHUB_PORT:-9998}
         published: ${CONTAINERHUB_PORT:-9998}
@@ -49,14 +52,7 @@ services:
 
   containerhub-monitoring:
     image: ${CONTAINERHUB_IMAGE:-192.168.122.1:5000/containerhub:0.0.2}
-    command:
-      - sh
-      - -eu
-      - -c
-      - |
-        export DRAX_JWT_SECRET="$$(cat /run/secrets/containerhub-test-jwt)"
-        export DRAX_APIKEY_SECRET="$$(cat /run/secrets/containerhub-test-api-key)"
-        exec node packages/containerhub-back/dist/monitoring.js
+    command: ["containerhub-monitoring"]
     environment:
       DRAX_DB_ENGINE: mongo
       DRAX_MONGO_URI: ${CONTAINERHUB_MONGO_URI:-mongodb://mongo:27017/containerhub}
@@ -66,12 +62,14 @@ services:
       DOCKER_DATA_PATH: /var/lib/containerhub
       CONTAINERHUB_AGENT_HOST: containerhub-agent
       CONTAINERHUB_AGENT_PORT: 9997
+      CONTAINERHUB_VAULT_URL: ${CONTAINERHUB_VAULT_URL:-http://vault:5000}
+      CONTAINERHUB_VAULT_CLIENT_ID: ${CONTAINERHUB_VAULT_CLIENT_ID:-containerhub}
+      CONTAINERHUB_VAULT_CLIENT_KEY_FILE: /run/secrets/containerhub-vault-client-key
     networks:
       - containerhub-agent-network
       - containerhub-mongo-network
     secrets:
-      - containerhub-test-jwt
-      - containerhub-test-api-key
+      - containerhub-vault-client-key
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - containerhub-data:/var/lib/containerhub
@@ -88,8 +86,7 @@ services:
       CONTAINERHUB_AGENT_PORT: 9997
       DOCKER_SOCKET_PATH: /var/run/docker.sock
       DOCKER_DATA_PATH: /var/lib/containerhub
-      CONTAINERHUB_HOST_VOLUME_ROOTS: ${CONTAINERHUB_STORAGE_ROOT:-/storage}
-      DRAX_SQLITE_FILE: /var/lib/containerhub/containerhub.sqlite
+      CONTAINERHUB_HOST_VOLUME_ROOTS: ${CONTAINERHUB_STORAGE_ROOT:-/storage},/logs,/localdata
       NODE_ID: "{{.Node.ID}}"
     networks:
       containerhub-agent-network:
@@ -99,6 +96,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - containerhub-data:/var/lib/containerhub
       - ${CONTAINERHUB_STORAGE_ROOT:-/storage}:${CONTAINERHUB_STORAGE_ROOT:-/storage}
+      - /logs:/logs
+      - /localdata:/localdata
     deploy:
       mode: global
       endpoint_mode: dnsrr
@@ -118,9 +117,5 @@ volumes:
   containerhub-data:
 
 secrets:
-  containerhub-test-jwt:
-    external: true
-  containerhub-test-api-key:
-    external: true
-  containerhub-test-bootstrap-password:
+  containerhub-vault-client-key:
     external: true

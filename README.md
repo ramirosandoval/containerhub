@@ -52,23 +52,42 @@ packages/containerhub-agent/deploy-remote-worker-proof.sh init
 See [`packages/containerhub-agent/TLS.md`](packages/containerhub-agent/TLS.md)
 for certificate ownership, rotation and manual setup.
 
-### 2. Create test login secrets
+### 2. Configure Vault access
 
-Choose the initial administrator password interactively; neither secret is
-stored in the stack file.
+In the Vault frontend, create a `containerhub` client with
+`encryptResponse=false`, then grant it access to the existing
+`containerhub-jwt` and `containerhub-api-key` secrets. Create the bootstrap
+credential once per Swarm cluster, from a manager:
 
 ```bash
-openssl rand -hex 32 | docker secret create containerhub-test-jwt -
-openssl rand -hex 32 | docker secret create containerhub-test-api-key -
-read -rsp 'ContainerHub test administrator password: ' CONTAINERHUB_TEST_PASSWORD; echo
-printf %s "$CONTAINERHUB_TEST_PASSWORD" | docker secret create containerhub-test-bootstrap-password -
-unset CONTAINERHUB_TEST_PASSWORD
+docker secret create containerhub-vault-client-key -
 ```
 
-The default test username is `containerhub-test`. Override the non-secret
-bootstrap fields with `CONTAINERHUB_BOOTSTRAP_USERNAME`,
+Paste the `clientKey` of the Vault client named `containerhub`, press Enter,
+then press `Ctrl+D`. Docker prints `containerhub-vault-client-key` when the
+secret is created. Swarm distributes it to the authorized application and
+monitoring tasks; do not repeat the command on worker nodes.
+
+The Vault URL must be reachable from the Swarm tasks; `localhost:3080` inside
+a container points to that container, not to the manager host. Use HTTPS
+outside a trusted local network.
+
+Initial administrator creation is disabled by default. Only when enabling it, create
+a Vault secret with identifier `containerhub-bootstrap-password` and the desired
+administrator password as its value; it is **not** another Docker secret. Grant
+the `containerhub` client access, then set
+`CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID=containerhub-bootstrap-password`
+in the manager's shell before deploying a dedicated stack, or on the existing
+ContainerHub service with `docker service update --env-add`. The variable holds
+only the identifier, never the password. See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+for recovery in a shared Swarm stack.
+
+There is no default bootstrap username or identity. Set
+`CONTAINERHUB_BOOTSTRAP_ENABLED=true`, the Vault secret identifier above,
+and all four non-secret fields `CONTAINERHUB_BOOTSTRAP_USERNAME`,
 `CONTAINERHUB_BOOTSTRAP_NAME`, `CONTAINERHUB_BOOTSTRAP_EMAIL` and
-`CONTAINERHUB_BOOTSTRAP_PHONE` before deployment when needed.
+`CONTAINERHUB_BOOTSTRAP_PHONE` before deployment if creating the initial user.
 
 ### 3. Build the images
 
@@ -108,19 +127,25 @@ accepted. You can also customize the exposed port using `CONTAINERHUB_PORT`.
 export CONTAINERHUB_ORIGIN=http://127.0.0.1:9998
 export CONTAINERHUB_PORT=9998
 export CONTAINERHUB_STORAGE_ROOT=/storage
+export CONTAINERHUB_VAULT_URL=http://192.168.122.1:3080
 docker stack deploy --resolve-image never -c docker-compose.yml containerhub-test
 docker stack services containerhub-test
 ```
 
-Create `$CONTAINERHUB_STORAGE_ROOT` with the required ownership on every
-manager and worker before deployment. The stack mounts that same absolute path
-into the application and each global agent; provisioning a manager-only path
-does not make a worker bind mount usable.
+For a new cluster without an existing login, configure the optional bootstrap
+fields in step 2 **before** running this deployment command. Otherwise the
+stack starts without creating an administrator.
+
+Create `$CONTAINERHUB_STORAGE_ROOT`, `/logs`, and `/localdata` with the required
+ownership on every eligible manager and worker before deployment. The stack
+mounts all three paths into the application and each global agent; the monitoring
+service does not use them. Provisioning on the manager alone does not make a
+worker bind mount usable.
 
 Use `--with-registry-auth` instead of `--resolve-image never` when the images
 are hosted in an authenticated registry. Open `$CONTAINERHUB_ORIGIN`, sign in
-with the configured bootstrap user, and verify the Nodes page. To exercise the
-remote path, place a disposable service on a worker and use its task actions
+with an existing user or the explicitly configured bootstrap user, and verify
+the Nodes page. To exercise the remote path, place a disposable service on a worker and use its task actions
 for statistics or terminal access.
 
 ### 5. Clean up
@@ -128,7 +153,6 @@ for statistics or terminal access.
 ```bash
 docker stack rm containerhub-test
 until [ -z "$(docker ps -aq --filter label=com.docker.stack.namespace=containerhub-test)" ]; do sleep 1; done
-docker secret rm containerhub-test-jwt containerhub-test-bootstrap-password
 docker volume rm containerhub-test_containerhub-data
 ```
 
@@ -146,6 +170,10 @@ ContainerHub uses the current Drax environment names directly:
 | `DRAX_SQLITE_FILE` | when engine is `sqlite` | SQLite database file |
 | `DRAX_JWT_SECRET` | yes | Secret used by Drax to sign and verify access tokens |
 | `DRAX_APIKEY_SECRET` | yes | Independent secret used by Drax to HMAC-protect user API keys |
+| `CONTAINERHUB_VAULT_URL` | for the Swarm stack | Vault API base URL reachable from the application tasks |
+| `CONTAINERHUB_VAULT_CLIENT_ID` | when Vault is configured | Vault client identifier; the stack defaults to `containerhub` |
+| `CONTAINERHUB_VAULT_CLIENT_KEY_FILE` | when Vault is configured | In-container path containing the Vault client key; the Swarm stack sets `/run/secrets/containerhub-vault-client-key` |
+| `CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID` | when bootstrap is enabled | Optional Vault identifier loaded into `CONTAINERHUB_BOOTSTRAP_PASSWORD` |
 | `DRAX_JWT_EXPIRATION` | no | Access-token lifetime; Drax defaults to `1h` |
 | `DRAX_JWT_ISSUER` | no | Access-token issuer; Drax defaults to `DRAX` |
 | `DRAX_PORT` | no | Backend port; ContainerHub defaults to `9998` |

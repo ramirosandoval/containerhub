@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import {mkdtemp, rm, writeFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+import {mock, test} from 'node:test'
 import {
     initializeContainerHubRuntime,
     resolveContainerHubBootstrapUser,
@@ -95,24 +98,40 @@ test('does not require bootstrap credentials when bootstrap is disabled', () => 
     assert.equal(resolveContainerHubBootstrapUser(environment), null)
 })
 
-test('initializes the worker runtime without bootstrap identity fields', async () => {
+test('loads Vault secrets before validating the worker runtime', async () => {
     const originalEnvironment = {...process.env}
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'containerhub-runtime-vault-'))
+    const clientKeyFile = join(temporaryDirectory, 'client-key')
+    await writeFile(clientKeyFile, 'test-vault-client-key')
+    const fetchMock = mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0]) => {
+        const identifier = new URL(String(input)).pathname.split('/').at(-1)
+        const secret = identifier === 'containerhub-jwt' ? 'test-only-secret' : 'test-only-api-key-secret'
+        return new Response(JSON.stringify({identifier, secret}))
+    })
     try {
+        delete process.env.DRAX_JWT_SECRET
+        delete process.env.DRAX_APIKEY_SECRET
         Object.assign(process.env, {
             DRAX_DB_ENGINE: 'sqlite',
             DRAX_SQLITE_FILE: 'containerhub-worker.sqlite',
-            DRAX_JWT_SECRET: 'test-only-secret',
-            DRAX_APIKEY_SECRET: 'test-only-api-key-secret',
             DRAX_PORT: '0',
             CONTAINERHUB_BOOTSTRAP_ENABLED: 'false',
+            CONTAINERHUB_VAULT_URL: 'http://vault.example:5000',
+            CONTAINERHUB_VAULT_CLIENT_ID: 'containerhub',
+            CONTAINERHUB_VAULT_CLIENT_KEY_FILE: clientKeyFile,
             NODE_ENV: 'test'
         })
         await initializeContainerHubRuntime()
+        assert.equal(fetchMock.mock.callCount(), 2)
+        assert.equal(process.env.DRAX_JWT_SECRET, 'test-only-secret')
+        assert.equal(process.env.DRAX_APIKEY_SECRET, 'test-only-api-key-secret')
     } finally {
+        mock.restoreAll()
         for (const key of Object.keys(process.env)) {
             if (!(key in originalEnvironment)) delete process.env[key]
         }
         Object.assign(process.env, originalEnvironment)
+        await rm(temporaryDirectory, {recursive: true, force: true})
     }
 })
 

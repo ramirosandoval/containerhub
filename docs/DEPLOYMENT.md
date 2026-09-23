@@ -43,14 +43,16 @@ En Docker DevOps, deja vacío `Comando` para la aplicación y configura
 launcher sin argumentos incluido en la imagen para respetar el contrato de
 comando string de Docker DevOps.
 
-Para que docker-devops pueda crear un archivo de `/storage/...` y montarlo después en un servicio, configura **el mismo valor** y bind mount en `app` y en cada `agent`:
+Para conservar los volúmenes permitidos por Docker DevOps (`/storage`, `/logs` y `/localdata`), la aplicación en el manager y **cada agente en los workers** deben tener los tres bind mounts con iguales rutas de host y contenedor. Si se despliegan como servicios independientes, configura lo siguiente en **ambos** (el stack `docker-compose.yml` ya lo declara):
 
 ```bash
 --env CONTAINERHUB_HOST_VOLUME_ROOTS=/storage,/logs,/localdata \
---mount type=bind,src=/storage,dst=/storage
+--mount type=bind,src=/storage,dst=/storage \
+--mount type=bind,src=/logs,dst=/logs \
+--mount type=bind,src=/localdata,dst=/localdata
 ```
 
-Añade los mounts equivalentes de `/logs` y `/localdata` solo si el entorno permite que docker-devops los use. La allow-list no crea mounts: si un worker no tiene el bind mount, ContainerHub falla el provisioning antes de crear o actualizar el servicio.
+Docker DevOps limita inicialmente la creación de **archivos** a `/storage`; los otros dos roots se conservan para **volúmenes/directorios**. Los paths deben existir y ser escribibles en cada nodo elegible antes de desplegar; el CSV autoriza rutas pero **no** crea mounts. `containerhub_monitoring` no necesita esos roots.
 
 Los roots deben ser escribibles solo por el principal que ejecuta ContainerHub/agent; no uses un host path modificable por usuarios o procesos no confiables.
 
@@ -67,22 +69,142 @@ export CONTAINERHUB_PORT=9998
 export CONTAINERHUB_ORIGIN=https://containerhub-dev.example.com
 export CONTAINERHUB_IMAGE=REGISTRY/containerhub:TAG_INMUTABLE
 export CONTAINERHUB_AGENT_IMAGE=REGISTRY/containerhub-agent:TAG_INMUTABLE
+export CONTAINERHUB_VAULT_URL=https://vault.example.com
 ```
 
 `CONTAINERHUB_PORT` controla el listener, el target y el published port. Termina TLS en el reverse proxy/ingress y configura `CONTAINERHUB_ORIGIN` con la URL HTTPS que usarán los navegadores y Docker DevOps. No envíes la API key ni la configuración revelada por HTTP sobre una red compartida. El acceso HTTP directo se limita a loopback o a una red privada explícitamente aislada durante pruebas desechables. App y agentes deben usar imágenes ya distribuidas o accesibles desde todos los nodos del Swarm.
 
-Si habilitas el bootstrap, `CONTAINERHUB_BOOTSTRAP_USERNAME` debe contener solo letras y números; el valor por defecto del stack es `containerhubtest`.
+El bootstrap está deshabilitado por defecto. Para habilitarlo, define explícitamente `CONTAINERHUB_BOOTSTRAP_ENABLED=true`, el identificador del secreto en Vault y los cuatro campos de identidad. `CONTAINERHUB_BOOTSTRAP_USERNAME` debe contener solo letras y números; el stack no tiene username por defecto.
 
-### Preparación de Secretos
-Antes del primer despliegue, Docker Swarm necesita los tres secretos externos declarados por el stack. Genera valores nuevos; no reutilices credenciales legacy ni versiones valores de ejemplo:
+### Preparación de secretos en Vault
+
+Desde el frontend de Vault, crea el cliente `containerhub` con
+`encryptResponse=false` y concédele acceso a `containerhub-jwt` y
+`containerhub-api-key`. Para que ContainerHub pueda consultar Vault, crea
+**un Docker secret con la clave del cliente de Vault** una sola vez por clúster
+Swarm, desde un manager:
 
 ```bash
-openssl rand -hex 32 | docker secret create containerhub-test-jwt -
-openssl rand -hex 32 | docker secret create containerhub-test-api-key -
-read -rsp 'ContainerHub bootstrap password: ' CONTAINERHUB_BOOTSTRAP_PASSWORD; echo
-printf '%s' "$CONTAINERHUB_BOOTSTRAP_PASSWORD" | docker secret create containerhub-test-bootstrap-password -
-unset CONTAINERHUB_BOOTSTRAP_PASSWORD
+docker secret create containerhub-vault-client-key -
 ```
+
+Pega el `clientKey` del cliente Vault `containerhub`, presiona Enter y luego
+`Ctrl+D`. Docker monta el valor únicamente en los servicios autorizados; no
+repitas el comando en los workers. Verifica su existencia sin revelar el valor:
+
+```bash
+docker secret inspect containerhub-vault-client-key --format '{{.Spec.Name}}'
+```
+
+El resultado esperado es `containerhub-vault-client-key`.
+
+La URL de Vault debe ser alcanzable desde las tareas; `localhost:3080` dentro
+del contenedor no apunta al host Swarm.
+
+#### Bootstrap o recuperación del administrador mediante Vault
+
+Son tres objetos distintos:
+
+| Nombre | Dónde se define | Contenido y destino |
+| --- | --- | --- |
+| `containerhub-bootstrap-password` | **Secreto de Vault**, autorizado para el cliente `containerhub` en el entorno que utiliza ese cliente (por ejemplo, `localDocker`) | Su **valor** es la contraseña elegida para el nuevo usuario de ContainerHub; no se crea como Docker secret. |
+| `CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID` | Variable de entorno **no secreta** del servicio ContainerHub | Su valor es solo `containerhub-bootstrap-password`, **no la contraseña**. No tiene valor por defecto; `docker-compose.yml` la recibe desde la shell del manager al desplegar un stack dedicado; `docker service update --env-add` la establece directamente en un servicio ya existente. |
+| `containerhub-vault-client-key` | **Docker secret externo** creado arriba | Contiene el `clientKey` del cliente Vault, no la contraseña del usuario. Swarm lo monta como `/run/secrets/containerhub-vault-client-key`. |
+
+Al arrancar, ContainerHub usa el Docker secret para identificarse ante Vault,
+solicita el identificador indicado por la variable de entorno y guarda el
+**valor devuelto** en `CONTAINERHUB_BOOTSTRAP_PASSWORD` dentro de su proceso.
+Luego crea el usuario `Admin` en la base `containerhub` **solo si ese username
+no existe**. El usuario `root` de Vault es independiente del usuario `root`
+de ContainerHub: no se copia su contraseña. La contraseña elegida puede ser la
+anterior de ContainerHub, siempre que cumpla la política de contraseñas de Drax;
+el bootstrap no modifica la contraseña de un usuario que ya exista.
+
+**Recuperar un servicio existente en el stack compartido `dockerway`:**
+
+1. En la UI de Vault, crea el secreto de Vault identificado como
+   `containerhub-bootstrap-password`. Su valor será la contraseña del usuario
+   que quieres crear; autoriza al cliente `containerhub` a leerlo. Comprueba que
+   ese mismo cliente puede leer `containerhub-jwt` y `containerhub-api-key`, y
+   que el Docker secret `containerhub-vault-client-key` ya está montado en el
+   servicio. No escribas la contraseña en el repositorio ni en la shell.
+2. Desde un manager Swarm, verifica primero que el servicio existe. Si el
+   comando siguiente falla o devuelve otro nombre, **detente**: esta operación
+   no crea el servicio. Restáuralo desde su definición de despliegue completa
+   antes de continuar, sin aplicar este `docker-compose.yml` incompleto al
+   stack compartido:
+
+```bash
+docker service inspect dockerway_containerhub --format '{{.Spec.Name}}'
+docker service inspect dockerway_containerhub --format '{{range .Spec.TaskTemplate.ContainerSpec.Secrets}}{{println .SecretName}}{{end}}'
+```
+
+Salidas esperadas: `dockerway_containerhub` y
+`containerhub-vault-client-key`, respectivamente. Comprueba también la imagen
+sin mostrar variables ni claves:
+
+```bash
+docker service inspect dockerway_containerhub --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+```
+
+Debe ser la imagen prevista de ContainerHub. **No supongas que este servicio
+existe**: el nombre es el del despliegue que quieres recuperar, no una
+garantía de que sigue instalado.
+
+3. Solo si el servicio existe y Vault ya contiene los tres secretos, configura
+   temporalmente el bootstrap **en ese servicio**, sin redesplegar todo el stack.
+   Sustituye nombre, username, email y teléfono de ejemplo si corresponde:
+
+```bash
+docker service update \
+  --env-add CONTAINERHUB_BOOTSTRAP_ENABLED=true \
+  --env-add CONTAINERHUB_BOOTSTRAP_NAME=Root \
+  --env-add CONTAINERHUB_BOOTSTRAP_USERNAME=root \
+  --env-add CONTAINERHUB_BOOTSTRAP_EMAIL=root@example.invalid \
+  --env-add CONTAINERHUB_BOOTSTRAP_PHONE=+15555550100 \
+  --env-add CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID=containerhub-bootstrap-password \
+  dockerway_containerhub
+
+docker service ps dockerway_containerhub --format '{{.CurrentState}} {{.Error}}'
+docker service logs --since 5m --tail 50 dockerway_containerhub
+```
+
+La tarea nueva debe quedar `Running`; si el usuario no existía, el arranque
+registra `User Created. Username: root`. Verifica el inicio de sesión en
+ContainerHub como `root` con el **valor del secreto de Vault**, no con la clave
+de acceso a Vault. No compartas logs sin revisarlos para excluir secretos.
+
+4. Después de confirmar el inicio de sesión, deshabilita el bootstrap en el
+   mismo servicio y retira el identificador del secreto:
+
+```bash
+docker service update \
+  --env-add CONTAINERHUB_BOOTSTRAP_ENABLED=false \
+  --env-rm CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID \
+  dockerway_containerhub
+
+docker service ps dockerway_containerhub --format '{{.CurrentState}} {{.Error}}'
+```
+
+Si el arranque de bootstrap falla, deshabilítalo igualmente antes de investigar
+el error. Luego puedes retirar de Vault `containerhub-bootstrap-password` o
+revocar el acceso del cliente, si no lo conservarás como credencial de
+recuperación. No cambies `containerhub-jwt` en este procedimiento: invalidaría
+las sesiones emitidas y habría que iniciar sesión de nuevo.
+
+**Primer despliegue de un stack dedicado:** en la shell del manager, exporta
+`CONTAINERHUB_BOOTSTRAP_ENABLED=true` y
+`CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID=containerhub-bootstrap-password`
+además de los cuatro campos no secretos `CONTAINERHUB_BOOTSTRAP_NAME`,
+`CONTAINERHUB_BOOTSTRAP_USERNAME`, `CONTAINERHUB_BOOTSTRAP_EMAIL` y
+`CONTAINERHUB_BOOTSTRAP_PHONE`. `docker-compose.yml` pasa el identificador
+al contenedor, no la contraseña. Revisa la configuración interpolada y el
+inventario del stack antes de ejecutar `docker stack deploy`; no muestres ni
+compartas la configuración completa si contiene credenciales. Tras verificar
+el login, exporta `CONTAINERHUB_BOOTSTRAP_ENABLED=false`, ejecuta
+`unset CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID` y redespliega ese
+mismo stack dedicado. Exportar variables en una shell **sin** redesplegar no
+cambia un servicio ya existente; el cambio dirigido anterior sí lo hace.
 
 ### Ejecución del Despliegue
 
