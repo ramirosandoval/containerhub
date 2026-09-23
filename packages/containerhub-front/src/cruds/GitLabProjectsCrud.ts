@@ -3,14 +3,26 @@ import {restGet} from '@/rest'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {withClientCsvExport} from './clientCsvExport'
 
-export type GitLabProject = {id: number; name: string; namespace?: {name?: string}; web_url?: string}
+export type GitLabProject = {
+    id: number
+    name: string
+    path_with_namespace: string
+    description?: string | null
+    web_url?: string
+    last_activity_at?: string
+    default_branch?: string | null
+    container_registry_image_prefix?: string
+    namespace?: {name?: string; full_path?: string}
+}
 type PaginatedProjects = {items: GitLabProject[]; totalItems: number}
 
 const gitLabProjectsProvider: IDraxCrudProvider<GitLabProject, never, never> = withClientCsvExport<GitLabProject, never, never>({
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<GitLabProject>> {
         const page = options.page ?? 1
         const perPage = options.limit ?? 25
-        const response = await restGet<PaginatedProjects>('/api/gitlab/project', {page, per_page: perPage})
+        const params: Record<string, string | number> = {page, per_page: perPage}
+        if (options.search) params.search = options.search
+        const response = await restGet<PaginatedProjects>('/api/gitlab/project', params)
         return {
             items: response.items,
             total: response.totalItems,
@@ -34,9 +46,9 @@ class GitLabProjectsCrud extends EntityCrud {
 
     override get headers(): IEntityCrud['headers'] {
         return [
-            {title: 'id', key: 'id'},
-            {title: 'namespace', key: 'namespace.name'},
-            {title: 'name', key: 'name'},
+            {title: 'project', key: 'name', sortable: false},
+            {title: 'lastActivity', key: 'last_activity_at', sortable: false},
+            {title: 'deployments', key: 'deployments', sortable: false},
             {title: 'tags', key: 'tags', sortable: false}
         ]
     }
@@ -51,11 +63,11 @@ class GitLabProjectsCrud extends EntityCrud {
     override get isImportable(): boolean { return false }
     override get isExportable(): boolean { return true }
     override get exportFormats() { return ['CSV'] }
-    override get exportHeaders() { return ['id', 'namespace.name', 'name'] }
+    override get exportHeaders() { return ['id', 'path_with_namespace', 'last_activity_at', 'web_url'] }
     override get isColumnSelectable(): boolean { return true }
     override get isGroupable(): boolean { return false }
     override get isRefreshable(): boolean { return true }
-    override get searchEnable(): boolean { return false }
+    override get searchEnable(): boolean { return true }
     override get containerFluid(): boolean { return true }
     override get filtersEnable(): boolean { return false }
     override get dynamicFiltersEnable(): boolean { return false }

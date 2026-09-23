@@ -81,7 +81,7 @@
             <template #item.name="{item}"><strong v-if="service(item)">{{ service(item)?.name }}</strong></template>
             <template #item.image.nameWithTag="{item}">
                 <v-tooltip v-if="service(item)?.image?.fullname" location="bottom">
-                    <template #activator="{props}"><v-chip v-bind="props" class="text-truncate" label size="small" style="max-width: 360px" variant="outlined">{{ service(item)?.image.nameWithTag }}</v-chip></template>
+                    <template #activator="{props}"><v-chip v-bind="props" class="text-truncate" label link size="small" style="max-width: 360px" variant="outlined" @click.stop="service(item) && openRegistry(service(item)!)">{{ service(item)?.image.nameWithTag }}</v-chip></template>
                     {{ service(item)?.image.fullname }}
                 </v-tooltip>
             </template>
@@ -170,6 +170,7 @@ import type {IDraxFieldFilter} from '@drax/crud-share'
 import AutoCrudFilters from '@/components/AutoCrudFilters.vue'
 import {ServiceCrud, type Service} from '@/cruds/ServiceCrud'
 import {restGet, restPost} from '@/rest'
+import {serviceRegistryTarget} from '@/images/registryImageReference'
 import {rememberTerminalTicket} from './terminalTickets'
 import {toServiceTask, type ServiceTask} from './taskContract'
 
@@ -196,15 +197,19 @@ const removeDialog = ref(false)
 const removing = ref(false)
 const removeResults = ref<ServiceRemoveViewResult[]>([])
 prepareFilters()
-const stack = route.query.stack
-if (typeof stack === 'string') {
-    const stackFilter = filters.value.find((filter: IDraxFieldFilter) => filter.field === 'stack')
-    if (stackFilter) stackFilter.value = stack
-}
+const hasInitialFilters = applyInitialFilter('stack', route.query.stack) || applyInitialFilter('image', route.query.image)
 onMounted(async () => {
     await ServiceCrud.instance.loadFilterOptions()
-    if (typeof stack === 'string') await applyFilters()
+    if (hasInitialFilters) await applyFilters()
 })
+
+function applyInitialFilter(field: string, value: unknown): boolean {
+    if (typeof value !== 'string') return false
+    const filter = filters.value.find((candidate: IDraxFieldFilter) => candidate.field === field)
+    if (!filter) return false
+    filter.value = value
+    return true
+}
 
 async function toggleTasks(item: unknown, internalItem: unknown, isExpanded: (item: any) => boolean, toggleExpand: (item: any) => void): Promise<void> {
     const expandedService = service(item)
@@ -242,6 +247,11 @@ function service(item: unknown): Service | null {
 
 function format(value: unknown): string {
     return typeof value === 'string' ? formatDateTime(value) : '—'
+}
+
+async function openRegistry(currentService: Service): Promise<void> {
+    const target = serviceRegistryTarget(currentService.image)
+    await router.push({name: 'registry-images', query: {repository: target.repository, tag: target.tag ?? undefined}})
 }
 
 function nodeName(nodeId: string | undefined): string {

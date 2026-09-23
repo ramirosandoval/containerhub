@@ -48,7 +48,7 @@ class RegistryImagesCrud extends EntityCrud {
     override get headers(): IEntityCrud['headers'] {
         return [
             {title: 'name', key: 'name'},
-            {title: 'tags', key: 'tags'}
+            {title: 'usage', key: 'usage', sortable: false}
         ]
     }
 

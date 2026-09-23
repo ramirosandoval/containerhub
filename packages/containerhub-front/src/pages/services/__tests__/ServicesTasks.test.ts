@@ -64,3 +64,12 @@ test('services remove one or many selected rows through one destructive action',
     assert.match(servicesPage, /await doPaginate\(\)/)
     assert.doesNotMatch(servicesPage, /\/api\/docker\/service\/remove\/\$\{/)
 })
+
+test('service images link to Registry and accept image deep-link filters', async () => {
+    const servicesPage = await readFile(new URL('../ServicesPage.vue', import.meta.url), 'utf8')
+
+    assert.match(servicesPage, /serviceRegistryTarget/)
+    assert.match(servicesPage, /name: 'registry-images'/)
+    assert.match(servicesPage, /query: \{repository: target\.repository, tag: target\.tag/)
+    assert.match(servicesPage, /applyInitialFilter\('image', route\.query\.image\)/)
+})

@@ -18,7 +18,6 @@ export const es = {
         nodes: 'Nodes',
         ghostContainers: 'Contenedores fantasma',
         networks: 'Networks',
-        dockerVersion: 'Versión de Docker',
         registryImages: 'Registry images',
         gitLabProjects: 'GitLab projects',
     },
@@ -26,8 +25,8 @@ export const es = {
     node: {crud: 'Nodos swarm', field: {id: 'ID', hostname: 'Nombre del host', ip: 'IP', role: 'Rol', availability: 'Disponibilidad', state: 'Estado', engine: 'Motor', leader: 'Lider', reachability: 'Alcanzabilidad', agentHealthy: 'Agente', resources: 'Recursos'}},
     ghostcontainer: {crud: 'Contenedores fantasma', field: {created: 'Creado', image: 'Imagen', status: 'Estado', id: 'ID', node: 'Nodo'}},
     network: {crud: 'Redes', field: {name: 'Nombre', created: 'Fecha de creacion', driver: 'Driver', attachable: 'Enlazable', ipamDriver: 'Driver IPAM', subnet: 'Subnet IPAM Ipv4', gateway: 'Gateway IPAM Ipv4', createdFrom: 'Creada desde', createdTo: 'Creada hasta'}},
-    registryimage: {crud: 'Imágenes de registro', field: {name: 'Nombre', tags: 'Tags'}},
-    gitlabproject: {crud: 'Proyectos GitLab', field: {id: 'ID', namespace: 'Namespace', name: 'Nombre', tags: 'Tags'}},
+    registryimage: {crud: 'Imágenes de registro', field: {name: 'Nombre', tags: 'Tags', usage: 'En uso'}},
+    gitlabproject: {crud: 'Proyectos GitLab', field: {project: 'Proyecto', lastActivity: 'Última actividad', deployments: 'Despliegues', tags: 'Acciones'}},
     taskmonitorization: {crud: 'Monitorizacion de tareas', field: {date: 'Fecha', status: 'Evento', taskId: 'ID de tarea', nodeName: 'Nodo', serviceName: 'Servicio', modifiedBy: 'Modificado por'}},
     tasksMonitorization: {title: 'Monitorizacion de tareas'},
     stacks: {
@@ -53,8 +52,8 @@ export const es = {
             onlyDisplayRunningTasks: 'Mostrar solo tareas en ejecución', displayNodeLabels: 'Mostrar etiquetas de nodos', autoRefresh: 'Actualización automática', refreshRate: 'Frecuencia de actualización'
         }
     },
-    registryImages: {title: 'Imágenes de registro', name: 'Nombre', tags: 'Tags', loadTags: 'Ver tags'},
-    gitLabProjects: {title: 'Proyectos GitLab', id: 'ID', namespace: 'Namespace', name: 'Nombre', tags: 'Tags', loadTags: 'Ver tags'},
+    registryImages: {title: 'Imágenes de registro', details: 'Ver detalles', expandTags: 'Expandir para ver tags', retry: 'Reintentar', tagCount: '{count} tags', searchTags: 'Buscar tags', noTags: 'Este repositorio no tiene tags', loadFailed: 'No se pudieron cargar los tags', detailsFailed: 'No se pudo cargar el manifest', selectedTag: 'Tag seleccionado', digest: 'Digest', mediaType: 'Media type', layers: 'Capas', compressedSize: 'Tamaño comprimido', platforms: 'Plataformas', deployedServices: '{count} servicios desplegados', viewServices: 'Ver servicios'},
+    gitLabProjects: {title: 'Proyectos GitLab', details: 'Ver detalles', openGitLab: 'Abrir en GitLab', openRegistry: 'Ver en Registry', retry: 'Reintentar', gitTags: 'Tags Git', tagCount: '{count} tags', searchTags: 'Buscar tags Git', noTags: 'Este proyecto no tiene tags Git', loadFailed: 'No se pudieron cargar los tags Git', deployments: 'Despliegues', deployedServices: '{count} servicios desplegados', tagPipeline: 'Pipeline del tag', selectTag: 'Seleccioná un tag para ver su pipeline y jobs', pipelineStatus: 'Pipeline', openPipeline: 'Abrir pipeline', noTagPipeline: 'Este tag no tiene un pipeline asociado', noPipelineJobs: 'El pipeline no tiene jobs visibles', pipelineLoadFailed: 'No se pudo cargar el pipeline del tag'},
     service: {
         crud: 'Servicios',
         field: {
@@ -133,7 +132,6 @@ export const en = {
         nodes: 'Nodes',
         ghostContainers: 'Ghost containers',
         networks: 'Networks',
-        dockerVersion: 'Docker version',
         registryImages: 'Registry images',
         gitLabProjects: 'GitLab projects',
     },
@@ -141,8 +139,8 @@ export const en = {
     node: {crud: 'Swarm nodes', field: {id: 'ID', hostname: 'Hostname', ip: 'IP', role: 'Role', availability: 'Availability', state: 'State', engine: 'Engine', leader: 'Leader', reachability: 'Reachability', agentHealthy: 'Agent', resources: 'Resources'}},
     ghostcontainer: {crud: 'Ghost containers', field: {created: 'Created', image: 'Image', status: 'Status', id: 'ID', node: 'Node'}},
     network: {crud: 'Networks', field: {name: 'Name', created: 'Creation date', driver: 'Driver', attachable: 'Attachable', ipamDriver: 'IPAM driver', subnet: 'Ipv4 IPAM subnet', gateway: 'Ipv4 IPAM gateway', createdFrom: 'Created from', createdTo: 'Created to'}},
-    registryimage: {crud: 'Registry images', field: {name: 'Name', tags: 'Tags'}},
-    gitlabproject: {crud: 'GitLab projects', field: {id: 'ID', namespace: 'Namespace', name: 'Name', tags: 'Tags'}},
+    registryimage: {crud: 'Registry images', field: {name: 'Name', tags: 'Tags', usage: 'In use'}},
+    gitlabproject: {crud: 'GitLab projects', field: {project: 'Project', lastActivity: 'Last activity', deployments: 'Deployments', tags: 'Actions'}},
     taskmonitorization: {crud: 'Tasks monitorization', field: {date: 'Date', status: 'Event', taskId: 'Task ID', nodeName: 'Node', serviceName: 'Service', modifiedBy: 'Modified by'}},
     tasksMonitorization: {title: 'Tasks monitorization'},
     stacks: {
@@ -168,8 +166,8 @@ export const en = {
             onlyDisplayRunningTasks: 'Only display running tasks', displayNodeLabels: 'Display node labels', autoRefresh: 'Auto refresh', refreshRate: 'Refresh rate'
         }
     },
-    registryImages: {title: 'Registry images', name: 'Name', tags: 'Tags', loadTags: 'Load tags'},
-    gitLabProjects: {title: 'GitLab projects', id: 'ID', namespace: 'Namespace', name: 'Name', tags: 'Tags', loadTags: 'Load tags'},
+    registryImages: {title: 'Registry images', details: 'View details', expandTags: 'Expand to view tags', retry: 'Retry', tagCount: '{count} tags', searchTags: 'Search tags', noTags: 'This repository has no tags', loadFailed: 'Could not load tags', detailsFailed: 'Could not load the manifest', selectedTag: 'Selected tag', digest: 'Digest', mediaType: 'Media type', layers: 'Layers', compressedSize: 'Compressed size', platforms: 'Platforms', deployedServices: '{count} deployed services', viewServices: 'View services'},
+    gitLabProjects: {title: 'GitLab projects', details: 'View details', openGitLab: 'Open in GitLab', openRegistry: 'View in Registry', retry: 'Retry', gitTags: 'Git tags', tagCount: '{count} tags', searchTags: 'Search Git tags', noTags: 'This project has no Git tags', loadFailed: 'Could not load Git tags', deployments: 'Deployments', deployedServices: '{count} deployed services', tagPipeline: 'Tag pipeline', selectTag: 'Select a tag to view its pipeline and jobs', pipelineStatus: 'Pipeline', openPipeline: 'Open pipeline', noTagPipeline: 'This tag has no associated pipeline', noPipelineJobs: 'The pipeline has no visible jobs', pipelineLoadFailed: 'Could not load the tag pipeline'},
     service: {
         crud: 'Services',
         field: {
