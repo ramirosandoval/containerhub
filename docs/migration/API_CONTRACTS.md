@@ -77,7 +77,7 @@ Log filter semantics: `tail`, non-negative `since`, `timestamps`, include/exclud
 | Network replace/remove backend | update/remove | DONE |
 | Network mutation audit/safety parity | update/remove | PARTIAL |
 | `GET /api/docker/ghostContainers` local running-container reconciliation | `DOCKER_VIEW` | DONE |
-| Cluster-wide ghost collection through `GET /api/docker/ghostContainers` | `DOCKER_VIEW` | PARTIAL; manager-local plus worker-agent inventories; `503` instead of an incomplete list when any remote scan fails; second-worker API/browser proof pending |
+| Cluster-wide ghost collection through `GET /api/docker/ghostContainers` | `DOCKER_VIEW` | PARTIAL; manager-local plus worker-agent inventories; nodes Docker reports as `down` are skipped (200 may omit their containers); failed scans of other remote nodes return `503`; second-worker API/browser proof pending |
 | `POST /api/docker/folders` local confined contract | `DOCKER_UPDATE` | DONE |
 | All-node folder provisioning | `DOCKER_UPDATE` | PARTIAL |
 | `POST /api/docker/files` local confined/awaited contract | `DOCKER_UPDATE` | DONE |

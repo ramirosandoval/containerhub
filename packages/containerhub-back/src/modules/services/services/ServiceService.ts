@@ -1032,7 +1032,7 @@ export async function fetchGhostContainers(): Promise<GhostContainer[]> {
     const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
     const containers: GhostContainer[] = localContainers.map((container) => ({...container, NodeID: localNodeId}))
     for (const node of nodes) {
-        if (node.ID === localNodeId) continue
+        if (node.ID === localNodeId || node.Status?.State === 'down') continue
         try {
             if (!agentHealthClient) throw new Error('Node agent is not configured')
             const nodeContainers = await agentHealthClient.fetchRunningContainers(node.ID)

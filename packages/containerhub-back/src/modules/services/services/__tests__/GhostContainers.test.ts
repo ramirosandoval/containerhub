@@ -92,6 +92,7 @@ test('ghost reconciliation excludes a healthy Swarm task and returns orphan runn
 
 async function ghostContainerServer() {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         ;(request as any).rbac = {
             assertPermission(permission: string) {
@@ -121,6 +122,24 @@ test('ghost endpoint reconciles worker containers and assigns their scanned node
         const unavailableResponse = await fastify.inject({method: 'GET', url: '/api/docker/ghostContainers', headers: {authorization: 'Bearer view-user'}})
         assert.equal(unavailableResponse.statusCode, 503)
         assert.match(unavailableResponse.json().message, /node-worker/)
+    } finally {
+        await fastify.close()
+    }
+})
+
+test('ghost endpoint skips a down worker and still scans the ready worker', async () => {
+    dockerNodes.push(
+        {ID: 'node-retired', Status: {State: 'down'}},
+        {ID: remoteNodeId, Status: {State: 'ready', Addr: '10.0.0.8'}}
+    )
+    const fastify = await ghostContainerServer()
+    try {
+        const response = await fastify.inject({
+            method: 'GET', url: '/api/docker/ghostContainers',
+            headers: {authorization: 'Bearer view-user'}
+        })
+        assert.equal(response.statusCode, 200)
+        assert.equal(response.json().find((container: {Id: string}) => container.Id === remoteContainerId)?.NodeID, remoteNodeId)
     } finally {
         await fastify.close()
     }

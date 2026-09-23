@@ -7,7 +7,21 @@
 </template>
 
 <script setup lang="ts">
-import {Crud} from '@drax/crud-vue'
+import {onMounted, watch} from 'vue'
+import {useRoute} from 'vue-router'
+import {Crud, useCrud} from '@drax/crud-vue'
 import {NodesCrud} from '@/cruds/NodesCrud'
 import {formatNodeResources} from './nodeResources'
+
+const route = useRoute()
+const {search, page, doPaginate} = useCrud(NodesCrud.instance)
+onMounted(() => {
+    watch(() => route.query.node, (nodeId) => {
+        const targetNodeId = typeof nodeId === 'string' ? nodeId : ''
+        if (search.value === targetNodeId) return
+        search.value = targetNodeId
+        page.value = 1
+        void doPaginate()
+    }, {immediate: true})
+})
 </script>
