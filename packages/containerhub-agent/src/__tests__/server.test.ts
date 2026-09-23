@@ -93,6 +93,9 @@ test('agent provisions docker-devops host paths only below configured host-volum
     })
 
     try {
+        assert.notEqual((await server.inject({method: 'POST', url: '/folders', payload: {hostPath}})).statusCode, 200)
+        assert.notEqual((await server.inject({method: 'POST', url: '/files', payload: {hostPath}})).statusCode, 200)
+        assert.notEqual((await server.inject({method: 'POST', url: '/files', payload: [{hostPath, fileName: 'bad.txt', fileContent: 1}]})).statusCode, 200)
         assert.equal((await server.inject({method: 'POST', url: '/folders', payload: [hostPath]})).statusCode, 200)
         assert.equal((await server.inject({
             method: 'POST', url: '/files',
