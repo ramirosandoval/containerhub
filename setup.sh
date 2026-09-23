@@ -8,11 +8,8 @@ cd "$(dirname "$0")"
 # This script used to call `npm run build -w @drax/...`, which fails
 # because @drax/* are not workspace members. See SKILL.md pitfalls.
 
-echo "Installing root deps..."
+echo "Installing dependencies..."
 npm install
-
-echo "Installing package deps..."
-npm install --workspaces --include-workspace-root
 
 echo "Done. Copy packages/containerhub-back/.env.example to .env and edit."
 echo "Then:"
