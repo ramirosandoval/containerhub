@@ -16,6 +16,15 @@ import {loadContainerHubSecretsFromVault} from './VaultSecretLoader.js'
 
 const bootstrapEnabledEnvironmentVariable = 'CONTAINERHUB_BOOTSTRAP_ENABLED'
 const auditPermissions = Object.values(AuditPermissions)
+const identityPermissions = [
+    'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
+    'role:manage', 'role:view', 'role:create', 'role:update', 'role:delete', 'role:permissions',
+    'userApiKey:manage', 'userApiKey:view', 'userApiKey:create', 'userApiKey:update', 'userApiKey:delete',
+    'userloginfail:manage', 'userloginfail:view', 'userloginfail:create', 'userloginfail:update', 'userloginfail:delete',
+    'usersession:manage', 'usersession:view', 'usersession:create', 'usersession:update', 'usersession:delete',
+    'tenant:manage', 'tenant:view', 'tenant:create', 'tenant:update', 'tenant:delete'
+]
+const settingsPermissions = ['SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE']
 
 function requiredBootstrapValue(environment: NodeJS.ProcessEnv, variable: string): string {
     const value = environment[variable]?.trim()
@@ -46,14 +55,6 @@ export function resolveContainerHubBootstrapUser(environment: NodeJS.ProcessEnv 
 }
 
 async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
-    const identityPermissions = [
-        'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
-        'role:manage', 'role:view', 'role:create', 'role:update', 'role:delete', 'role:permissions',
-        'userApiKey:manage', 'userApiKey:view', 'userApiKey:create', 'userApiKey:update', 'userApiKey:delete',
-        'userloginfail:manage', 'userloginfail:view', 'userloginfail:create', 'userloginfail:update', 'userloginfail:delete',
-        'usersession:manage', 'usersession:view', 'usersession:create', 'usersession:update', 'usersession:delete',
-        'tenant:manage', 'tenant:view', 'tenant:create', 'tenant:update', 'tenant:delete'
-    ]
     await CreateOrUpdateRole({
         name: 'Admin',
         permissions: [...dockerPermissions, ...identityPermissions, ...auditPermissions],
@@ -63,7 +64,6 @@ async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
     const serviceAccess = [DockerPermissions.View, DockerPermissions.Remove, DockerPermissions.Logs, DockerPermissions.Terminal]
     const serviceManagement = [...serviceAccess, DockerPermissions.Restart, DockerPermissions.Create, DockerPermissions.Update]
     const monitoringManagement = [DockerPermissions.MonitoringCreate, DockerPermissions.MonitoringPause, DockerPermissions.MonitoringDelete]
-    const settingsPermissions = ['SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE']
     const rolePermissions = {
         Sudo: [...serviceManagement, DockerPermissions.NodesFetch, DockerPermissions.NetworkView, ...monitoringManagement, ...settingsPermissions, ...identityPermissions.filter(permission => permission.startsWith('user:') || permission.startsWith('role:') || permission.startsWith('userApiKey:') || permission.startsWith('userloginfail:') || permission.startsWith('usersession:') || permission.startsWith('tenant:')), ...auditPermissions],
         Implementaciones: serviceManagement,
@@ -162,13 +162,8 @@ export default async function SetupContainerHub() {
     LoadPermissions([
         ...dockerPermissions,
         ...auditPermissions,
-        'user:manage', 'user:view', 'user:create', 'user:update', 'user:delete', 'user:changePassword',
-        'role:manage', 'role:view', 'role:create', 'role:update', 'role:delete', 'role:permissions',
-        'userApiKey:manage', 'userApiKey:view', 'userApiKey:create', 'userApiKey:update', 'userApiKey:delete',
-        'userloginfail:manage', 'userloginfail:view', 'userloginfail:create', 'userloginfail:update', 'userloginfail:delete',
-        'usersession:manage', 'usersession:view', 'usersession:create', 'usersession:update', 'usersession:delete',
-        'tenant:manage', 'tenant:view', 'tenant:create', 'tenant:update', 'tenant:delete',
-        'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE'
+        ...identityPermissions,
+        ...settingsPermissions
     ])
     await createRolesAndBootstrapUser(resolveContainerHubBootstrapUser())
 }
