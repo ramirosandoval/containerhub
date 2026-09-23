@@ -36,6 +36,7 @@ test.after(() => dockerMock.restore())
 
 async function serviceServer() {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         const authorization = request.headers.authorization
         const permissions = authorization === 'Bearer config-user'
