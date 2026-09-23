@@ -18,7 +18,6 @@ export const menu = [
             {text: 'monitoring.title', link: {name: 'monitoring'}, icon: 'mdi-chart-line', gallery: true, permission: 'DOCKER_VIEW'},
             {text: 'tasksMonitorization.title', link: {name: 'tasks-monitorization'}, icon: 'mdi-history', gallery: true, permission: 'DOCKER_VIEW'},
             {text: 'app.ghostContainers', link: {name: 'ghost-containers'}, icon: 'mdi-ghost', gallery: true, permission: 'DOCKER_VIEW'},
-            {text: 'app.dockerVersion', link: {name: 'docker-version'}, icon: 'mdi-information-outline', gallery: true, permission: 'DOCKER_VIEW'},
         ]
     },
     {

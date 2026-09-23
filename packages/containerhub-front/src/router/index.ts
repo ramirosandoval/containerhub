@@ -56,12 +56,6 @@ const appRoutes: RouteRecordRaw[] = [
         meta: {title: 'networks.title', requiresAuth: true, permission: 'DOCKER_NETWORK_VIEW'}
     },
     {
-        path: '/docker/version',
-        name: 'docker-version',
-        component: () => import('@/pages/DockerVersionPage.vue'),
-        meta: {title: 'dockerVersion.title', requiresAuth: true, permission: 'DOCKER_VIEW'}
-    },
-    {
         path: '/cluster',
         name: 'cluster',
         component: () => import('@/pages/ClusterInformationPage.vue'),
@@ -128,10 +122,13 @@ const draxRoutes = [...IdentityRoutes]
     .filter(route => route.name !== 'CrudTenant')
     .map(route => {
         if (route.meta && (route.meta.auth === true || route.meta.auth === false)) {
-            const { auth, ...restMeta } = route.meta as any
+            const {auth, ...restMeta} = route.meta as any
             return {
                 ...route,
-                meta: { ...restMeta, requiresAuth: auth }
+                meta: {
+                    ...restMeta,
+                    requiresAuth: auth
+                }
             }
         }
         return route
@@ -139,7 +136,7 @@ const draxRoutes = [...IdentityRoutes]
 
 export const router = createRouter({
     history: createWebHistory(),
-    routes: [...appRoutes, ...draxRoutes]
+    routes: [...appRoutes, ...draxRoutes, {path: '/:pathMatch(.*)*', redirect: {name: 'home'}}]
 })
 
 router.afterEach((to) => {
@@ -156,7 +153,7 @@ router.afterEach((to) => {
             ? `/favicons/${sectionIcon}.svg`
             : typeof to.meta.favicon === 'string'
                 ? to.meta.favicon
-                : '/favicon.ico'
+                : '/favicon.svg'
     }
 })
 

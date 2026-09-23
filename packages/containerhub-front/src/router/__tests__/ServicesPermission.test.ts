@@ -52,8 +52,8 @@ test('custom operational tables wire native Drax filters and selectable columns'
     assert.doesNotMatch(automaticFilters, /crud-filters-actions__apply-button/)
 })
 
-test('top-level application sections share one 16px content gutter', () => {
-    assert.match(app, /--app-section-gutter: 16px/)
+test('top-level application sections share one compact responsive content gutter', () => {
+    assert.match(app, /--app-section-gutter: clamp\(8px, 1vw, 12px\)/)
     assert.match(app, /\.v-main > \.v-container[\s\S]*width: 100%[\s\S]*max-width: 100% !important[\s\S]*margin: 0[\s\S]*padding: var\(--app-section-gutter\)/)
     assert.match(app, /\.v-main > \.v-container\.crud[\s\S]*margin-top: 0 !important/)
     assert.match(servicesPage, /<v-container fluid>/)

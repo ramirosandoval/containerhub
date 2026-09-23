@@ -17,6 +17,7 @@
             <sidebar-menu :menu="menu"/>
 
             <template #append>
+                <docker-version-summary v-if="authStore.hasPermission('DOCKER_VIEW')"/>
                 <v-divider/>
                 <v-list density="comfortable">
                     <v-list-item :title="t('app.logout')" prepend-icon="mdi-logout" @click="logout"/>
@@ -50,6 +51,7 @@ import {IdentityProfileView, useAuth, useAuthStore} from '@drax/identity-vue'
 import {menu, getIconForRouteName} from '@/navigation'
 import {useRoute, useRouter} from 'vue-router'
 import AnimatedBackground from '@/components/AnimatedBackground.vue'
+import DockerVersionSummary from '@/components/DockerVersionSummary.vue'
 import {computed} from 'vue'
 
 const {t} = useI18n()
@@ -67,7 +69,7 @@ const currentIcon = computed(() => {
 
 <style>
 :root {
-    --app-section-gutter: 16px;
+    --app-section-gutter: clamp(8px, 1vw, 12px);
 }
 .v-main > .v-container {
     width: 100%;

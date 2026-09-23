@@ -36,7 +36,7 @@
             
             <template v-slot:expanded-row="{ columns, item }">
                 <tr>
-                    <td :colspan="columns.length" class="pa-4 bg-grey-lighten-4">
+                    <td :colspan="columns.length" class="pa-2">
                         <v-card variant="flat">
                             <v-data-table
                                 :headers="taskHeaders"

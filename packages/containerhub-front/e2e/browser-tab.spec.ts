@@ -42,6 +42,13 @@ async function loadedFaviconPathname(page: Page): Promise<string> {
     })
 }
 
+async function loadedFaviconSource(page: Page): Promise<string> {
+    return page.evaluate(async () => {
+        const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+        return link ? fetch(link.href).then(response => response.text()) : ''
+    })
+}
+
 test('updates the browser title from the active section', async ({page}) => {
     await authenticate(page)
 
@@ -63,7 +70,7 @@ test('matches the favicon to the active section and resets it on home', async ({
         {path: '/cluster', title: 'Información de swarm', favicon: '/favicons/mdi-server-network.svg'},
         {path: '/statistics/missing-task', title: 'Estadísticas de tarea', favicon: '/poll.svg'},
         {path: '/inspect/missing-task', title: 'Inspección de tarea', favicon: '/file-document.svg'},
-        {path: '/logs/missing-task?service=test-service', title: 'Logs de tarea', favicon: '/favicon.ico'},
+        {path: '/logs/missing-task?service=test-service', title: 'Logs de tarea', favicon: '/favicon.svg'},
         {path: '/terminal/missing-task', title: 'Terminal de tarea', favicon: '/console.svg'},
     ]
 
@@ -71,9 +78,17 @@ test('matches the favicon to the active section and resets it on home', async ({
         await page.goto(section.path)
         await expect(page).toHaveTitle(section.title, {timeout: metadataTimeout})
         await expect.poll(() => loadedFaviconPathname(page)).toBe(section.favicon)
+        const faviconSource = await loadedFaviconSource(page)
+        expect(faviconSource).toContain('fill="#2196F3"')
+        expect(faviconSource).not.toContain('fill="#FFFFFF"')
+        expect(faviconSource).not.toContain('<rect')
     }
 
     await page.goto('/')
     await expect(page).toHaveTitle('ContainerHub', {timeout: metadataTimeout})
-    await expect.poll(() => loadedFaviconPathname(page)).toBe('/favicon.ico')
+    await expect.poll(() => loadedFaviconPathname(page)).toBe('/favicon.svg')
+    const homeFaviconSource = await loadedFaviconSource(page)
+    expect(homeFaviconSource).toContain('fill="#2196F3"')
+    expect(homeFaviconSource).not.toContain('fill="#FFFFFF"')
+    expect(homeFaviconSource).not.toContain('<rect')
 })
