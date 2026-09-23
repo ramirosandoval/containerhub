@@ -40,6 +40,10 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
         assert.equal(paginatedServices?.parameters?.some((parameter) => parameter.name === 'orderBy'), true)
         assert.equal(documentedPaths['/api/registry/image']?.get?.summary, 'List registry images')
         assert.equal(documentedPaths['/api/gitlab/project']?.get?.summary, 'List GitLab projects')
+        const tagPipeline = documentedPaths['/api/gitlab/project/{id}/tag-pipeline']?.get
+        assert.equal(tagPipeline?.parameters?.some((parameter) => parameter.name === 'id'), true)
+        assert.deepEqual(tagPipeline?.security, [{bearerAuth: []}, {apiKeyAuth: []}])
+        assert.ok(tagPipeline?.responses?.['200'])
         assert.ok(documentedPaths['/api/settings']?.put?.requestBody)
         assert.ok(documentedPaths['/api/docker/service']?.post?.requestBody)
         assert.ok(documentedPaths['/api/docker/service/{service}']?.put?.requestBody)

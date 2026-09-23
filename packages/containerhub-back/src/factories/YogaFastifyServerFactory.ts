@@ -43,6 +43,37 @@ function localRouteTag(url: string): string | undefined {
     return undefined
 }
 
+function transformContainerHubOpenApiRoute({schema, url, route}: SwaggerTransformInput) {
+    const tag = localRouteTag(url)
+    const routeSchema = schema ?? {}
+    if (!tag) return {schema: routeSchema, url}
+
+    const parameterNames = [...url.matchAll(/:([^/]+)/g)].map((match) => match[1])
+    const schemaWithPathParameters = parameterNames.length && !routeSchema.params
+        ? {
+            ...routeSchema,
+            params: {
+                type: 'object',
+                required: parameterNames,
+                properties: Object.fromEntries(parameterNames.map((parameterName) => [parameterName, {type: 'string'}]))
+            }
+        }
+        : routeSchema
+    const security = routeSchema.security?.some((requirement) => requirement.bearerAuth)
+        ? dualAuthenticationSecurity
+        : routeSchema.security ?? dualAuthenticationSecurity
+    return {
+        url,
+        schema: {
+            ...schemaWithPathParameters,
+            tags: routeSchema.tags ?? [tag],
+            summary: routeSchema.summary ?? `${String(route.method)} ${url}`,
+            security,
+            response: routeSchema.response ?? {'200': {description: 'Successful response'}}
+        }
+    }
+}
+
 function setWebSocketAuthorizationHeader(request: {headers: Record<string, string | string[] | undefined>}): void {
     const upgradeHeader = request.headers.upgrade
     if ((Array.isArray(upgradeHeader) ? upgradeHeader[0] : upgradeHeader)?.toLowerCase() !== 'websocket' || request.headers.authorization) return
@@ -71,36 +102,7 @@ export default function YogaFastifyServerFactory() {
                 }
             }
         },
-        transform: ({schema, url, route}: SwaggerTransformInput) => {
-            const tag = localRouteTag(url)
-            const routeSchema = schema ?? {}
-            if (!tag) return {schema: routeSchema, url}
-
-            const parameterNames = [...url.matchAll(/:([^/]+)/g)].map((match) => match[1])
-            const schemaWithPathParameters = parameterNames.length && !routeSchema.params
-                ? {
-                    ...routeSchema,
-                    params: {
-                        type: 'object',
-                        required: parameterNames,
-                        properties: Object.fromEntries(parameterNames.map((parameterName) => [parameterName, {type: 'string'}]))
-                    }
-                }
-                : routeSchema
-            const security = routeSchema.security?.some((requirement) => requirement.bearerAuth)
-                ? dualAuthenticationSecurity
-                : routeSchema.security ?? dualAuthenticationSecurity
-            return {
-                url,
-                schema: {
-                    ...schemaWithPathParameters,
-                    tags: routeSchema.tags ?? [tag],
-                    summary: routeSchema.summary ?? `${String(route.method)} ${url}`,
-                    security,
-                    response: routeSchema.response ?? {'200': {description: 'Successful response'}}
-                }
-            }
-        }
+        transform: transformContainerHubOpenApiRoute
     })
     server.fastify.register(swaggerUi, {
         routePrefix: '/documentation',
