@@ -131,31 +131,7 @@ class TaskMonitorizationsManager {
         try {
             const {ID: taskId, NodeID: nodeId, ServiceID: serviceId, Status: {State: taskState}} = task
 
-            // Heuristica legacy para el usuario:
-            let modifiedBy = null
-            
-            // Buscar un log de auditoría reciente para el recurso `Service` con action UPDATE/RESTART/DELETE
-            // dentro de los últimos 2 minutos, usando la API abstracta de Drax (soporta Mongo y SQLite).
-            const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
-            try {
-                const recentAudits = await AuditServiceFactory.instance.find({
-                    limit: 1,
-                    orderBy: 'createdAt',
-                    order: 'desc',
-                    filters: [
-                        {field: 'entity', operator: 'eq', value: 'Service'},
-                        {field: 'resourceId', operator: 'eq', value: serviceId},
-                        {field: 'action', operator: 'in', value: ['UPDATE', 'RESTART', 'DELETE']},
-                        {field: 'createdAt', operator: 'gte', value: twoMinutesAgo.toISOString()}
-                    ]
-                })
-                const recentAudit = recentAudits[0]
-                if (recentAudit && recentAudit.user) {
-                    modifiedBy = recentAudit.user.username ?? null
-                }
-            } catch (e) {
-                winston.warn(`Could not query audit for modifiedBy heuristic: ${e}`)
-            }
+            const modifiedBy = await this.modifiedByForService(serviceId)
 
             const docData: ITaskMonitorization = {
                 date: new Date(),
@@ -172,6 +148,30 @@ class TaskMonitorizationsManager {
             this.memoryTaskMonitorizations.unshift(doc)
         } catch (error) {
             winston.error(`Error saving new task monitorization: ${error}`)
+        }
+    }
+
+    private async modifiedByForService(serviceId: string): Promise<string | null> {
+        // Buscar un log de auditoría reciente para el recurso `Service` con action UPDATE/RESTART/DELETE
+        // dentro de los últimos 2 minutos, usando la API abstracta de Drax (soporta Mongo y SQLite).
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
+        try {
+            const recentAudits = await AuditServiceFactory.instance.find({
+                limit: 1,
+                orderBy: 'createdAt',
+                order: 'desc',
+                filters: [
+                    {field: 'entity', operator: 'eq', value: 'Service'},
+                    {field: 'resourceId', operator: 'eq', value: serviceId},
+                    {field: 'action', operator: 'in', value: ['UPDATE', 'RESTART', 'DELETE']},
+                    {field: 'createdAt', operator: 'gte', value: twoMinutesAgo.toISOString()}
+                ]
+            })
+            const recentAudit = recentAudits[0]
+            return recentAudit?.user?.username ?? null
+        } catch (e) {
+            winston.warn(`Could not query audit for modifiedBy heuristic: ${e}`)
+            return null
         }
     }
 
