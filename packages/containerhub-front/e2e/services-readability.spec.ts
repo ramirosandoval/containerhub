@@ -42,3 +42,25 @@ test('expanded service tasks retain actions and fall back to node ID', async ({p
     await expect(stoppedTask.getByRole('button', {name: 'Estadísticas'})).toHaveCount(0)
     expect(taskRequests).toBe(1)
 })
+
+test('a user without DOCKER_VIEW is redirected before Services requests', async ({page}) => {
+    const token = [
+        Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
+        Buffer.from(JSON.stringify({exp: 4_102_444_800})).toString('base64url'),
+        'readability-test'
+    ].join('.')
+    await page.addInitScript(({accessToken}) => localStorage.setItem('AuthStore', JSON.stringify({
+        accessToken, authUser: {username: 'readability-test', role: {permissions: []}}
+    })), {accessToken: token})
+    let serviceRequests = 0
+    page.on('request', request => {
+        if (new URL(request.url()).pathname.startsWith('/api/services')) serviceRequests++
+    })
+    await page.route('**/api/**', async route => { await route.fulfill({json: {}}) })
+    await page.route('**/graphql', async route => { await route.fulfill({json: {data: {}}}) })
+
+    await page.goto('/services')
+    await expect(page).toHaveURL(/\/$/)
+    await page.waitForLoadState('networkidle')
+    expect(serviceRequests).toBe(0)
+})
