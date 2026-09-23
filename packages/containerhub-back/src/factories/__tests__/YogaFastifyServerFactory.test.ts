@@ -4,7 +4,7 @@ import YogaFastifyServerFactory from '../YogaFastifyServerFactory.js'
 
 type DocumentedOperation = {
     summary?: string
-    parameters?: Array<{name?: string}>
+    parameters?: Array<{name?: string; required?: boolean; schema?: {pattern?: string}}>
     requestBody?: unknown
     responses?: Record<string, unknown>
     security?: Array<{bearerAuth?: string[]; apiKeyAuth?: string[]}>
@@ -42,6 +42,7 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
         assert.equal(documentedPaths['/api/gitlab/project']?.get?.summary, 'List GitLab projects')
         const tagPipeline = documentedPaths['/api/gitlab/project/{id}/tag-pipeline']?.get
         assert.equal(tagPipeline?.parameters?.some((parameter) => parameter.name === 'id'), true)
+        assert.equal(tagPipeline?.parameters?.some((parameter) => parameter.name === 'tag' && parameter.required && parameter.schema?.pattern === '.*\\S.*'), true)
         assert.deepEqual(tagPipeline?.security, [{bearerAuth: []}, {apiKeyAuth: []}])
         assert.ok(tagPipeline?.responses?.['200'])
         assert.ok(documentedPaths['/api/settings']?.put?.requestBody)

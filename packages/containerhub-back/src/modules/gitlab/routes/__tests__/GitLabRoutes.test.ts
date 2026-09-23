@@ -35,6 +35,7 @@ test('tag pipeline route checks permission before forwarding project and tag', a
         assert.equal(requestedUrl.searchParams.get('ref'), 'release/2.4')
         assert.equal(requestedUrl.searchParams.get('scope'), 'tags')
         assert.equal(fetchMock.mock.callCount(), 1)
+        assert.equal((await server.inject('/api/gitlab/project/7/container-scan')).statusCode, 404)
     } finally {
         mock.restoreAll()
         await server.close()
