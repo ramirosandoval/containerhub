@@ -31,7 +31,7 @@ test('services expose a protected task statistics page with bounded polling tear
         readFile(new URL('../../../router/index.ts', import.meta.url), 'utf8')
     ])
 
-    assert.match(servicesPage, /openStatistics\(task\)/)
+    assert.match(servicesPage, /@statistics="openStatistics"/)
     assert.match(router, /path: '\/statistics\/:taskId'/)
     assert.match(router, /permission: 'DOCKER_VIEW'/)
     assert.match(statisticsPage, /\/api\/docker\/task\/\$\{encodeURIComponent\(taskId\.value\)\}\/stats/)

@@ -91,34 +91,17 @@
             <template #expanded-row="{columns, item}">
                 <tr>
                     <td :colspan="columns.length" class="pa-0">
-                        <v-card class="ma-3" variant="outlined">
-                            <v-progress-linear v-if="taskLoading[service(item)?.id ?? '']" indeterminate/>
-                            <v-card-text v-else-if="tasks[service(item)?.id ?? '']?.length" class="position-relative">
-                                <v-btn :aria-label="t('services.tasks.refresh')" class="position-absolute" icon="mdi-refresh" location="top end" size="small" variant="text" @click="service(item) && reloadTasks(service(item)!)"/>
-                                <v-table density="compact">
-                                    <thead><tr><th>{{ t('services.tasks.state') }}</th><th>{{ t('services.tasks.created') }}</th><th>{{ t('services.tasks.updated') }}</th><th>{{ t('services.tasks.node') }}</th><th>{{ t('services.tasks.task') }}</th><th class="text-center">{{ t('services.tasks.actions') }}</th></tr></thead>
-                                    <tbody>
-                                        <tr v-for="task in tasks[service(item)?.id ?? '']" :key="task.id">
-                                            <td><v-chip :color="taskStateColor(task.state)" label size="small" variant="outlined">{{ task.state ?? '—' }}</v-chip></td>
-                                            <td>{{ format(task.createdAt) }}</td>
-                                            <td>{{ format(task.updatedAt) }}</td>
-                                            <td>{{ nodeName(task.nodeId) }}</td>
-                                            <td>{{ task.id }}</td>
-                                            <td class="text-center">
-                                                <v-btn :aria-label="t('services.tasks.logs')" color="primary" icon="mdi-file-document-outline" size="small" variant="text" @click="openLogs(task, service(item)!)"/>
-                                                <v-btn :aria-label="t('taskInspect.title')" color="primary" icon="mdi-information-outline" size="small" variant="text" @click="openInspect(task)"/>
-                                                <v-btn v-if="task.state === 'running' && task.containerId" :aria-label="t('taskStatistics.title')" color="primary" icon="mdi-chart-line" size="small" variant="text" @click="openStatistics(task)"/>
-                                                <v-menu v-if="canOpenTerminal(task)">
-                                                    <template #activator="{props}"><v-btn v-bind="props" :aria-label="t('services.tasks.terminal')" color="primary" icon="mdi-console" size="small" variant="text"/></template>
-                                                    <v-list density="compact"><v-list-item :title="t('services.tasks.shell', {shell: 'sh'})" @click="openTerminal(task, 'sh')"/><v-list-item :title="t('services.tasks.shell', {shell: 'bash'})" @click="openTerminal(task, 'bash')"/></v-list>
-                                                </v-menu>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
-                            </v-card-text>
-                            <v-card-text v-else><v-alert density="compact" type="info">{{ t('services.tasks.empty') }}</v-alert></v-card-text>
-                        </v-card>
+                        <ServiceTasksPanel
+                            :tasks="tasks[service(item)?.id ?? '']"
+                            :loading="Boolean(taskLoading[service(item)?.id ?? ''])"
+                            :node-names="nodeNames"
+                            :allow-terminal="authStore.hasPermission('DOCKER_TERMINAL')"
+                            @reload="service(item) && reloadTasks(service(item)!)"
+                            @logs="task => openLogs(task, service(item)!)"
+                            @inspect="openInspect"
+                            @statistics="openStatistics"
+                            @terminal="(task, shell) => openTerminal(task, shell)"
+                        />
                     </td>
                 </tr>
             </template>
@@ -173,6 +156,7 @@ import {restGet, restPost} from '@/rest'
 import {serviceRegistryTarget} from '@/images/registryImageReference'
 import {rememberTerminalTicket} from './terminalTickets'
 import {toServiceTask, type ServiceTask} from './taskContract'
+import ServiceTasksPanel from './ServiceTasksPanel.vue'
 
 type Node = {id?: string; hostname?: string}
 type ServiceRestartResult = {serviceId: string; success: boolean; warnings: string[]; error?: string}
@@ -254,14 +238,6 @@ async function openRegistry(currentService: Service): Promise<void> {
     await router.push({name: 'registry-images', query: {repository: target.repository, tag: target.tag ?? undefined}})
 }
 
-function nodeName(nodeId: string | undefined): string {
-    return nodeId ? nodeNames.value[nodeId] ?? nodeId : '—'
-}
-
-function taskStateColor(state: string | undefined): string {
-    return ({running: 'success', rejected: 'error', shutdown: 'error', failed: 'error', starting: 'teal', complete: 'primary', restarting: 'warning', paused: 'cyan', exited: 'purple', dead: 'black', created: 'indigo'} as Record<string, string>)[state ?? ''] ?? 'grey'
-}
-
 function openLogs(task: ServiceTask, currentService: Service): void {
     const logsUrl = router.resolve({name: 'task-logs', params: {taskId: task.id}, query: {service: currentService.name}}).href
     window.open(logsUrl, '_blank', 'noopener')
@@ -275,10 +251,6 @@ function openInspect(task: ServiceTask): void {
 function openStatistics(task: ServiceTask): void {
     const statisticsUrl = router.resolve({name: 'task-statistics', params: {taskId: task.id}}).href
     window.open(statisticsUrl, '_blank', 'noopener')
-}
-
-function canOpenTerminal(task: ServiceTask): boolean {
-    return task.state === 'running' && Boolean(task.containerId) && authStore.hasPermission('DOCKER_TERMINAL')
 }
 
 async function openTerminal(task: ServiceTask, shell: 'sh' | 'bash'): Promise<void> {
