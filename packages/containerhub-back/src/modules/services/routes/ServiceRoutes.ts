@@ -5,14 +5,14 @@ import {DockerPermissions} from '../permissions/DockerPermissions.js'
 import {requirePermission} from './requirePermission.js'
 import {parseTaskLogTail, streamTaskLogs} from '../services/ServiceService.js'
 import {SettingsService} from '../../settings/services/SettingsService.js'
-import type {ServiceFilter, TaskLogFilters} from '../services/ServiceService.js'
+import type {TaskLogFilters} from '../services/ServiceService.js'
 import {registerNetworkMutation, serviceMutationContext} from '../services/ServiceMutationAudit.js'
 import {
     createFiles, createFolders, createNetwork, createService, dockerRemove, dockerRemoveMany, dockerRestart, dockerRestartMany, fetchGhostContainers,
     fetchClusterSummary, fetchImageStatus,
     fetchNodeAndTasks,
     fetchDockerVersion, fetchLogs, fetchNetwork, fetchNetworks, fetchNodes, fetchService, fetchServiceStats, fetchTaskInspect, fetchTaskLogs, fetchTaskStats, fetchTasks,
-    findServiceByIdOrName, findServiceTag, getOrCreateNetwork, paginateServices, parseServiceFilters, removeNetwork,
+    findServiceByIdOrName, findServiceTag, getOrCreateNetwork, removeNetwork,
     ServiceCreateInputSchema, ServiceUpdateInputSchema, updateNetwork, updateService
 } from '../services/ServiceService.js'
 
@@ -54,45 +54,8 @@ async function taskLogFilters(payload: Buffer): Promise<TaskLogFilters> {
     }
 }
 
-const paginatedServicesSchema = {
-    summary: 'List services with pagination',
-    tags: ['Services'],
-    security: [{bearerAuth: []}],
-    querystring: {
-        type: 'object',
-        properties: {
-            page: {type: 'integer', minimum: 1},
-            limit: {type: 'integer', minimum: 1, maximum: 200},
-            orderBy: {type: 'string'},
-            order: {type: 'string', enum: ['asc', 'desc']},
-            search: {type: 'string'},
-            stack: {type: 'string'},
-            filters: {type: 'string', description: 'JSON-encoded filter array'}
-        }
-    },
-    response: {'200': {description: 'Paginated services'}}
-} as const
-
 export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
     fastify.get('/api/services/health', protectedRoute(DockerPermissions.View), async () => ({ok: true, module: 'services'}))
-    fastify.get('/api/services', protectedRoute(DockerPermissions.View), async () => fetchService())
-    fastify.get('/api/services/paginate', {
-        ...protectedRoute(DockerPermissions.View),
-        schema: paginatedServicesSchema
-    }, async (request: any) => {
-        const page = Math.max(1, Number(request.query?.page ?? 1))
-        const limit = Math.min(200, Math.max(1, Number(request.query?.limit ?? 25)))
-        const filters: ServiceFilter[] = parseServiceFilters(request.query?.filters)
-        return paginateServices({
-            page, limit,
-            orderBy: request.query?.orderBy as string | undefined,
-            order: request.query?.order as 'asc' | 'desc' | undefined,
-            search: request.query?.search as string | undefined,
-            stack: (request.query?.stack as string | null | undefined) ?? null,
-            filters
-        })
-    })
-
     fastify.get('/api/docker/service', protectedRoute(DockerPermissions.View), async (request: any) => fetchService(undefined, serviceReadOptions(request)))
     fastify.post('/api/docker/service', protectedRoute(DockerPermissions.Create, {body: z.toJSONSchema(ServiceCreateInputSchema, {target: 'openapi-3.0'})}), async (request: any, reply) => {
         try {

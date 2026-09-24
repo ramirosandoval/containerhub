@@ -127,3 +127,16 @@ test('legacy service list reveals configuration only to the dedicated permission
         await fastify.close()
     }
 })
+
+test('native REST service lists are retired without changing legacy Docker reads', async () => {
+    const fastify = await serviceServer()
+    try {
+        for (const url of ['/api/services', '/api/services/paginate?page=1&limit=10']) {
+            const response = await fastify.inject({url, headers: {authorization: 'Bearer view-user'}})
+            assert.equal(response.statusCode, 404)
+        }
+        const legacy = await fastify.inject({url: '/api/docker/service', headers: {authorization: 'Bearer config-user'}})
+        assert.equal(legacy.statusCode, 200)
+        assert.deepEqual(legacy.json()[0].envs, [{name: 'TOKEN', value: 'secret-value'}])
+    } finally { await fastify.close() }
+})
