@@ -2,8 +2,8 @@
 
 ## Contract policy
 
-- REST/Fastify is the primary ContainerHub transport. Drax identity and HTTP clients remain authoritative infrastructure.
-- Keep GraphQL only where current compatibility requires it; do not recreate legacy Apollo organization.
+- REST/Fastify remains the transport for Docker DevOps and operations; UI service inventory reads use GraphQL. Drax identity and HTTP clients remain authoritative infrastructure.
+- Keep GraphQL limited to these service reads and existing operations; do not recreate legacy Apollo organization.
 - OpenAPI schemas document routes and the shared Ajv 2020-12 compiler enforces Fastify request validation and coercion.
 - Docker error details must not leak secrets; destructive commands must retain meaningful not-found/conflict/validation semantics.
 
@@ -34,14 +34,14 @@ The dedicated integration role requires exactly:
 - `DOCKER_NODES_FETCH`
 - `DOCKER_NETWORK_VIEW`
 
-`DOCKER_CONFIGURATION_VIEW` reveals configuration values on the legacy Docker service contracts and the full task inspection. Without it, service environment/label values and sensitive task inspection values remain `[REDACTED]`. Native `/api/services` and GraphQL remain redacted.
+`DOCKER_CONFIGURATION_VIEW` reveals configuration values on the legacy Docker service contracts and the full task inspection. Without it, service environment/label values and sensitive task inspection values remain `[REDACTED]`. GraphQL service types do not expose environment or label values, even to holders of this permission.
 
 ### Services
 
 | Contract | Permission | Shape/notes | Status |
 |---|---|---|---|
-| `GET /api/services` | `DOCKER_VIEW` | Full normalized service array | DONE |
-| `GET /api/services/paginate` | `DOCKER_VIEW` | Query `page,limit,orderBy,order,search,stack,filters`; returns `{page,limit,total,items}` | DONE |
+| GraphQL `fetchService(stack)` | `DOCKER_VIEW` | Full normalized service array for UI facets, stacks, monitoring and image usage; no configuration fields | DONE |
+| GraphQL `paginateServices(page,limit,orderBy,order,search,stack,filters)` | `DOCKER_VIEW` | `page` clamped to at least 1, `limit` to 1..200; `order` asc/desc, `filters` JSON-encoded safe field filters; returns `{page,limit,total,items}` without configuration fields | DONE |
 | `GET /api/docker/service` and `/:idOrName` | `DOCKER_VIEW`; `DOCKER_CONFIGURATION_VIEW` to reveal config values | List/inspect/find; env and labels redacted by default | DONE |
 | `POST /api/docker/service` | `DOCKER_CREATE` | Inspected response, task networks/aliases, labeled stack network, health-check, resources and legacy policies; legacy `command: null` uses the image default | DONE |
 | `PUT /api/docker/service/:service` | `DOCKER_UPDATE` | Live versioned update through the shared create/update mapper with durable audit; legacy `command: null` clears an explicit command and restores the image default | DONE |
