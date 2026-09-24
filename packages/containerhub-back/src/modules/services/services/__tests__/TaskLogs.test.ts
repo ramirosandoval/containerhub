@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {createDockerLogLineDecoder, decodeDockerLogOutput, parseTaskLogTail} from '../ServiceService.js'
+import {createDockerLogLineDecoder, parseTaskLogTail} from '../ServiceService.js'
+import {decodeDockerLogOutput} from '../TaskLogDecoder.js'
 
 function dockerLogFrame(streamType: 1 | 2, payload: string): Buffer {
     const payloadBuffer = Buffer.from(payload, 'utf8')

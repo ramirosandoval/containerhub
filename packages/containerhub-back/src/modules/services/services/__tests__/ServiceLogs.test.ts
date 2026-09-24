@@ -60,6 +60,7 @@ test('service logs return null when no task is running', async () => {
 
 async function serviceLogServer() {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         const bearerToken = request.headers.authorization?.replace(/^Bearer /, '')
         ;(request as any).rbac = {
