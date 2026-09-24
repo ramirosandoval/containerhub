@@ -15,10 +15,10 @@ test('expanded service tasks retain actions and fall back to node ID', async ({p
     await page.addInitScript(({accessToken}) => localStorage.setItem('AuthStore', JSON.stringify({
         accessToken, authUser: {username: 'readability-test', role: {permissions: ['DOCKER_VIEW', 'DOCKER_LOGS', 'DOCKER_TERMINAL']}}
     })), {accessToken: token})
-    await page.route('**/api/services**', async route => {
-        await route.fulfill({json: route.request().url().includes('/paginate')
-            ? {items: [service], total: 1, page: 1, limit: 10} : [service]})
-    })
+    await page.route('**/api/**', route => route.abort())
+    await page.route('**/graphql', route => route.fulfill({json: {data: route.request().postDataJSON().query.includes('paginateServices')
+        ? {paginateServices: {items: [service], total: 1, page: 1, limit: 10}}
+        : {fetchService: [service]}}}))
     await page.route('**/api/docker/version', async route => { await route.fulfill({json: {}}) })
     let taskRequests = 0
     await page.route('**/api/docker/tasks/service-1', async route => {
@@ -53,8 +53,10 @@ test('a user without DOCKER_VIEW is redirected before Services requests', async 
         accessToken, authUser: {username: 'readability-test', role: {permissions: []}}
     })), {accessToken: token})
     let serviceRequests = 0
+    let legacyRequests = 0
     page.on('request', request => {
-        if (new URL(request.url()).pathname.startsWith('/api/services')) serviceRequests++
+        if (new URL(request.url()).pathname.startsWith('/api/services')) legacyRequests++
+        if (new URL(request.url()).pathname === '/graphql' && /(?:fetchService|paginateServices)/.test(request.postData() ?? '')) serviceRequests++
     })
     await page.route('**/api/**', async route => { await route.fulfill({json: {}}) })
     await page.route('**/graphql', async route => { await route.fulfill({json: {data: {}}}) })
@@ -63,4 +65,5 @@ test('a user without DOCKER_VIEW is redirected before Services requests', async 
     await expect(page).toHaveURL(/\/$/)
     await page.waitForLoadState('networkidle')
     expect(serviceRequests).toBe(0)
+    expect(legacyRequests).toBe(0)
 })
