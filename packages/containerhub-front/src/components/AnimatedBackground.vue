@@ -30,6 +30,7 @@ const color = computed(() => theme.current.value.colors.primary)
 
 .circles {
   position: absolute;
+  pointer-events: none;
   top: 0;
   left: 0;
   width: 100%;
