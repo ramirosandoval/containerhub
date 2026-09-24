@@ -23,6 +23,15 @@ type Service {
   updatedAt: String
 }
 
+type ServicePage {
+  page: Int!
+  limit: Int!
+  total: Int!
+  items: [Service!]!
+}
+
+enum ServiceOrder { asc desc }
+
 type ServiceWarning {
   Warnings: [String]
 }
@@ -33,6 +42,7 @@ type RemoveResult {
 
 type Query {
   fetchService(stack: String): [Service]
+  paginateServices(page: Int!, limit: Int!, orderBy: String, order: ServiceOrder, search: String, stack: String, filters: String): ServicePage!
   findServiceById(id: String!): Service
 }
 
