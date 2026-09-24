@@ -37,3 +37,19 @@ test('Services uses authenticated GraphQL pagination and a full list for filter 
     expect(paginated?.variables.page).toBe(1)
     expect(paginated?.authorization).toBe(`Bearer ${token}`)
 })
+
+test('Stacks counts the full GraphQL inventory and links to Services', async ({page}) => {
+    await authenticate(page)
+    await page.route('**/api/**', route => route.abort())
+    await page.route('**/api/docker/version', route => route.fulfill({json: {}}))
+    await page.route('**/graphql', route => route.fulfill({json: {data: {fetchService: [
+        service, {...service, id: 'service-2', name: 'team_worker'},
+        {...service, id: 'service-3', name: 'other_api', stack: 'other'}
+    ]}}}))
+    await page.goto('/stacks')
+    const teamRow = page.locator('main tbody > tr').filter({hasText: 'team'})
+    await expect(teamRow).toContainText('2')
+    const otherRow = page.locator('main tbody > tr').filter({hasText: 'other'})
+    await expect(otherRow).toContainText('1')
+    await expect(teamRow.getByRole('link')).toHaveAttribute('href', /\/services\?stack=team/)
+})

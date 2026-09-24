@@ -1,10 +1,9 @@
 import {EntityCrud} from '@drax/crud-vue'
-import {restGet} from '@/rest'
+import {fetchAllServices} from '../services/serviceGraphql'
 import type {IEntityCrud, IDraxCrudProvider, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
 import {withClientCsvExport} from './clientCsvExport'
 import {applyClientFieldFilters} from './clientFieldFilters'
 
-type ServiceStack = {stack: string | null}
 export type StackSummary = {name: string; services: number}
 
 function matchesSearch(item: StackSummary, search: string): boolean {
@@ -13,7 +12,7 @@ function matchesSearch(item: StackSummary, search: string): boolean {
 
 const stacksProvider: IDraxCrudProvider<StackSummary, never, never> = withClientCsvExport<StackSummary, never, never>({
     async paginate(options: IDraxPaginateOptions): Promise<IDraxPaginateResult<StackSummary>> {
-        const services = await restGet<ServiceStack[]>('/api/services')
+        const services = await fetchAllServices()
         const counts = new Map<string, number>()
         for (const service of services) {
             if (service.stack) counts.set(service.stack, (counts.get(service.stack) ?? 0) + 1)
@@ -32,7 +31,7 @@ const stacksProvider: IDraxCrudProvider<StackSummary, never, never> = withClient
         return {items: items.slice(start, start + options.limit), total: items.length, page: options.page, limit: options.limit}
     },
     async fetchAll(): Promise<StackSummary[]> {
-        const services = await restGet<ServiceStack[]>('/api/services')
+        const services = await fetchAllServices()
         const counts = new Map<string, number>()
         for (const service of services) {
             if (service.stack) counts.set(service.stack, (counts.get(service.stack) ?? 0) + 1)
