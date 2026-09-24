@@ -31,15 +31,10 @@ async function authenticate(page: Page, permissions = ['DOCKER_VIEW']): Promise<
 }
 
 async function mockServices(page: Page): Promise<void> {
-    await page.route('**/api/services**', async (route) => {
-        const url = new URL(route.request().url())
-        await route.fulfill({
-            contentType: 'application/json',
-            body: JSON.stringify(url.pathname.endsWith('/paginate')
-                ? {items: [service], total: 1, page: 1, limit: 10}
-                : [service]),
-        })
-    })
+    await page.route('**/api/services**', route => route.abort())
+    await page.route('**/graphql', route => route.fulfill({json: {data: route.request().postDataJSON().query.includes('paginateServices')
+        ? {paginateServices: {items: [service], total: 1, page: 1, limit: 10}}
+        : {fetchService: [service]}}}))
 }
 
 test('opens the deployed service image in Registry with its tag and manifest details', async ({page}) => {
@@ -61,6 +56,7 @@ test('opens the deployed service image in Registry with its tag and manifest det
     await expect(page).toHaveURL(/\/registry-images\?repository=team\/api&tag=2\.4/)
     await expect(page.getByText('sha256:abc', {exact: true})).toBeVisible()
     await expect(page.getByText('2.4', {exact: true}).first()).toBeVisible()
+    await expect(page.getByText('team_api', {exact: true})).toBeVisible()
 })
 
 test('task summary text can be selected and copied without activating its links', async ({page, context}) => {
@@ -180,6 +176,7 @@ test('searches GitLab projects and shows the selected tag pipeline jobs', async 
     await page.getByRole('button', {name: /Ver detalles|View details/}).click()
 
     await expect(page.getByText(/Seleccioná un tag|Select a tag/)).toBeVisible()
+    await expect(page.getByText('team_api · 2.4')).toBeVisible()
     const pipelineRequest = page.waitForRequest((request) => {
         const url = new URL(request.url())
         return url.pathname.endsWith('/tag-pipeline') && url.searchParams.get('tag') === 'v2.4'
