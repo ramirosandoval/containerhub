@@ -66,7 +66,7 @@ import {computed, reactive, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {monitoringProvider, type MonitoringConfiguration} from '@/cruds/MonitoringCrud'
 import type {Service} from '@/cruds/ServiceCrud'
-import {restGet} from '@/rest'
+import {fetchAllServices} from '@/services/serviceGraphql'
 
 const {refresh} = defineProps<{refresh: () => Promise<void>}>()
 const emit = defineEmits<{created: [outcome: {created: MonitoringConfiguration[]; skipped: string[]}]}>()
@@ -99,7 +99,7 @@ async function open() {
     services.value = []
     servicesLoading.value = true
     try {
-        const availableServices = await restGet<Service[]>('/api/services')
+        const availableServices = await fetchAllServices()
         const statuses = await monitoringProvider.statuses(availableServices.map(service => service.id))
         configuredServices.value = Object.fromEntries(statuses.map(configuration => [configuration.serviceId, configuration.status]))
         services.value = availableServices
