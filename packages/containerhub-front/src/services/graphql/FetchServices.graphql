@@ -1,0 +1,3 @@
+query FetchServices {
+    fetchService { ...ServiceFields }
+}
