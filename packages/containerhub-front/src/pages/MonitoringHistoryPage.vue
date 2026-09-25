@@ -16,8 +16,8 @@
                     <v-col cols="12" md="2"><v-select v-model="limit" :items="[100, 250, 500, 1000]" :label="t('monitoring.sampleLimit')"/></v-col>
                     <v-col class="d-flex align-center" cols="12" md="1"><v-btn block color="primary" @click="load">{{ t('monitoring.apply') }}</v-btn></v-col>
                 </v-row>
-                <v-alert v-if="!loading && !samples.length" type="info" variant="tonal">{{ t('monitoring.noSamples') }}</v-alert>
-                <template v-else>
+                <v-alert v-if="!loading && !error && !samples.length" type="info" variant="tonal">{{ t('monitoring.noSamples') }}</v-alert>
+                <template v-else-if="!loading && !error">
                     <v-row>
                         <v-col v-for="metric in charts" :key="metric.title" cols="12" md="4">
                             <div class="metric-card pa-4 rounded border">

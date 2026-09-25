@@ -23,6 +23,7 @@ const stacksProvider: IDraxCrudProvider<StackSummary, never, never> = withClient
         const orderBy = options.orderBy ?? 'name'
         const direction = options.order === 'desc' ? -1 : 1
         items.sort((a, b) => {
+            if (orderBy === 'services') return (a.services - b.services) * direction
             const va = String((a as Record<string, unknown>)[orderBy] ?? '')
             const vb = String((b as Record<string, unknown>)[orderBy] ?? '')
             return va.localeCompare(vb) * direction

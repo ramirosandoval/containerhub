@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { useAuthStore } from '@drax/identity-vue'
 import { SettingsApi, type ISettings } from '../../providers/SettingsApi'
 
+const authStore = useAuthStore()
+const canUpdate = computed(() => authStore.hasPermission('SETTINGS_UPDATE'))
 const loading = ref(false)
 const saving = ref(false)
 const snackbar = ref({ show: false, text: '', color: 'success' })
@@ -57,6 +60,7 @@ onMounted(() => {
                                         type="number"
                                         min="1"
                                         required
+                                        :readonly="!canUpdate"
                                         hint="Cantidad máxima de líneas devueltas por los endpoints de logs"
                                         persistent-hint
                                     ></v-text-field>
@@ -68,6 +72,7 @@ onMounted(() => {
                                         type="number"
                                         min="1"
                                         required
+                                        :readonly="!canUpdate"
                                         hint="Límite histórico de tareas que se retendrán en memoria/BD"
                                         persistent-hint
                                     ></v-text-field>
@@ -79,6 +84,7 @@ onMounted(() => {
                                         type="number"
                                         min="1"
                                         required
+                                        :readonly="!canUpdate"
                                         hint="Cada cuántos segundos se consultará el estado de las tareas"
                                         persistent-hint
                                     ></v-text-field>
@@ -87,6 +93,7 @@ onMounted(() => {
                             <v-card-actions class="mt-4 px-0">
                                 <v-spacer></v-spacer>
                                 <v-btn
+                                    v-if="canUpdate"
                                     color="primary"
                                     type="submit"
                                     variant="elevated"
