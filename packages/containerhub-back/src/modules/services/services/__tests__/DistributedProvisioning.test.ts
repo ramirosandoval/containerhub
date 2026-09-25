@@ -91,3 +91,26 @@ test('legacy docker-devops host paths are provisioned at their configured host-v
         ])
     }
 })
+
+test('local provisioning creates nested folders and replaces an existing file', async () => {
+    const hostRoot = await mkdtemp(join(tmpdir(), 'containerhub-local-provisioning-'))
+    const previousDockerDataPath = process.env.DOCKER_DATA_PATH
+    const previousHostVolumeRoots = process.env.CONTAINERHUB_HOST_VOLUME_ROOTS
+    process.env.DOCKER_DATA_PATH = hostRoot
+    process.env.CONTAINERHUB_HOST_VOLUME_ROOTS = hostRoot
+    useLocalNode = true
+    try {
+        await createFolders(['nested/config'])
+        await writeFile(join(hostRoot, 'nested', 'config', 'app.txt'), 'previous content')
+        assert.deepEqual(await createFiles([{
+            hostPath: 'nested/config', fileName: 'app.txt', fileContent: 'new content'
+        }]), {message: 'File successfully created!'})
+        assert.equal(await readFile(join(hostRoot, 'nested', 'config', 'app.txt'), 'utf8'), 'new content')
+    } finally {
+        if (previousDockerDataPath === undefined) delete process.env.DOCKER_DATA_PATH
+        else process.env.DOCKER_DATA_PATH = previousDockerDataPath
+        if (previousHostVolumeRoots === undefined) delete process.env.CONTAINERHUB_HOST_VOLUME_ROOTS
+        else process.env.CONTAINERHUB_HOST_VOLUME_ROOTS = previousHostVolumeRoots
+        await rm(hostRoot, {recursive: true, force: true})
+    }
+})
