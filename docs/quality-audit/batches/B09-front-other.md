@@ -112,7 +112,7 @@ Rutas abreviadas sólo en las explicaciones: cada línea `Reviewed` conserva la 
 | B09-003 | Abierto como riesgo de navegación | `pages/RegistryImagesPage.vue:75-84` fija `targetRepository`/`targetTag` en el montaje y sólo observa `items`, no cambios de query al reutilizar instancia. No se reprodujo en router real. |
 | B09-004 | Corregido | `components/HomeGallery.vue` usa clave enlazada en el fragmento repetido; no hay colisión literal. |
 | B09-005 | Abierto | `components/DockerVersionSummary.vue:32-38` sigue sin rama de error; el rechazo de `restGet` se presenta como valores ausentes. |
-| B09-006 | Abierto como hipótesis de contrato | `images/serviceImageUsage.ts:27-33` acepta dominio nulo del servicio aunque el proyecto tenga dominio; falta demostrar que el backend entrega legítimamente ese caso. |
+| B09-006 | Corregido con regresión | `modules/services/helpers/parseDockerImageReference.ts:20-27` puede entregar `domain: null` para una imagen sin registro explícito; `images/serviceImageUsage.ts:27-33` ahora exige dominio coincidente cuando el proyecto GitLab tiene uno. La prueba `serviceImageUsage.test.ts` reprodujo primero el falso positivo y comprobó que el filtro sin dominio conserva su comportamiento; no se verificó en UI con GitLab real. |
 | B09-007 | Corregido por B06-001 | Mismo control de ajustes; no contar como defecto adicional. |
 
-`pages/networkFilters.ts` se retiró porque no tenía consumidor productivo local; los tests de filtros activos se refieren al proveedor real. Build/tipos y **51/51** tests frontend pasaron, sin prueba UI real de B09-002/003.
+`pages/networkFilters.ts` se retiró porque no tenía consumidor productivo local; los tests de filtros activos se refieren al proveedor real. Build/tipos y **52/52** tests frontend pasaron, sin prueba UI real de B09-002/003 ni integración GitLab real de B09-006.
