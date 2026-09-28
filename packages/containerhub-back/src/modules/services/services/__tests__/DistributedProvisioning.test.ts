@@ -58,6 +58,10 @@ test('file provisioning still fails when a worker fails', async () => {
     await assert.rejects(createFiles([{hostPath: 'data', fileName: 'app.txt', fileContent: 'content'}]), /worker unavailable/)
 })
 
+test('empty file provisioning succeeds without contacting an unavailable worker', async () => {
+    assert.deepEqual(await createFiles([]), {message: 'File successfully created!'})
+})
+
 test('local provisioning stays inside Docker data and cannot overwrite its SQLite database', async () => {
     const root = await mkdtemp(join(tmpdir(), 'containerhub-data-'))
     const outside = await mkdtemp(join(tmpdir(), 'containerhub-outside-'))

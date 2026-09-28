@@ -676,6 +676,8 @@ export async function createFolders(folders: unknown): Promise<{nodes: number; s
 export async function createFiles(files: unknown): Promise<{message: string}> {
     const validatedFiles = await parseServiceInput(FileInputsSchema, files)
 
+    if (validatedFiles.length === 0) return {message: 'File successfully created!'}
+
     const dockerInfo = await docker.info()
     const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
     const nodes = await fetchNodes()
