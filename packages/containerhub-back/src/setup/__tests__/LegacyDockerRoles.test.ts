@@ -21,7 +21,7 @@ const expectedBundles: Record<string, string[]> = {
     PM: serviceAccess,
     QA: serviceAccess,
     Soporte: [],
-    Admin: [...serviceManagement, 'DOCKER_CONFIGURATION_VIEW', 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_NETWORK_CREATE', 'DOCKER_NETWORK_UPDATE', 'DOCKER_NETWORK_REMOVE', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage', ...auditAccess]
+    Admin: [...serviceManagement, 'DOCKER_CONFIGURATION_VIEW', 'DOCKER_NODES_FETCH', 'DOCKER_NETWORK_VIEW', 'DOCKER_NETWORK_CREATE', 'DOCKER_NETWORK_UPDATE', 'DOCKER_NETWORK_REMOVE', 'DOCKER_MONITORING_CREATE', 'DOCKER_MONITORING_PAUSE', 'DOCKER_MONITORING_DELETE', 'SETTINGS_SHOW', 'SETTINGS_UPDATE', 'SETTINGS_CREATE', 'SETTINGS_DELETE', 'user:manage', 'role:manage', 'userApiKey:manage', 'userloginfail:manage', 'usersession:manage', ...auditAccess]
 }
 
 test('startup persists the approved Docker bundles idempotently and enforces their API access', async () => {
@@ -62,6 +62,8 @@ test('startup persists the approved Docker bundles idempotently and enforces the
             const rbac = new Rbac(authUser, storedRole)
             assert.equal(rbac.hasPermission('DOCKER_RESTART'), permissions.includes('DOCKER_RESTART'), roleName)
             assert.equal(rbac.hasPermission('DOCKER_TERMINAL'), permissions.includes('DOCKER_TERMINAL'), roleName)
+            assert.equal(rbac.hasPermission('SETTINGS_SHOW'), permissions.includes('SETTINGS_SHOW'), roleName)
+            assert.equal(rbac.hasPermission('SETTINGS_UPDATE'), permissions.includes('SETTINGS_UPDATE'), roleName)
             assert.equal(rbac.hasPermission('user:manage'), roleName === 'Admin' || roleName === 'Sudo', roleName)
             assert.equal(rbac.hasPermission('audit:view'), permissions.includes('audit:view'), roleName)
             assert.equal(rbac.hasPermission('audit:viewAll'), permissions.includes('audit:viewAll'), roleName)
