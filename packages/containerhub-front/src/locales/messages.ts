@@ -95,7 +95,7 @@ export const es = {
         removeFailed: 'No se pudo eliminar',
         removeConfirmation: '¿Eliminar este servicio?',
     },
-    taskLogs: {title: 'Logs de tarea', unknownService: 'Servicio', since: 'Desde', all: 'Todo el historial', day: 'Último día', hours: 'Últimas 4 horas', hour: 'Última hora', minutes: 'Últimos 30 minutos', include: 'Incluir', exclude: 'Excluir', lines: 'Cantidad de líneas', timestamps: 'Timestamps', pause: 'Pausar'},
+    taskLogs: {title: 'Logs de tarea', unknownService: 'Servicio', since: 'Desde', all: 'Todo el historial', day: 'Último día', hours: 'Últimas 4 horas', hour: 'Última hora', minutes: 'Últimos 30 minutos', include: 'Incluir', exclude: 'Excluir', lines: 'Cantidad de líneas', timestamps: 'Timestamps', pause: 'Pausar', configurationUnavailable: 'No se pudo cargar la configuración de logs.'},
     taskInspect: {
         title: 'Inspección de tarea', service: 'Servicio', error: 'No se pudo cargar la inspección de la tarea.', retry: 'Reintentar',
         refresh: 'Actualizar', lastRead: 'Última lectura', observed: 'Estado observado', desired: 'Estado deseado', node: 'Nodo', container: 'Contenedor', image: 'Imagen', created: 'Creada', updated: 'Actualizada', message: 'Mensaje', exitCode: 'Código de salida', executionError: 'Error de ejecución',
@@ -209,7 +209,7 @@ export const en = {
         removeFailed: 'Removal failed',
         removeConfirmation: 'Remove this service?',
     },
-    taskLogs: {title: 'Task logs', unknownService: 'Service', since: 'Since', all: 'All history', day: 'Last day', hours: 'Last 4 hours', hour: 'Last hour', minutes: 'Last 30 minutes', include: 'Include', exclude: 'Exclude', lines: 'Line count', timestamps: 'Timestamps', pause: 'Pause'},
+    taskLogs: {title: 'Task logs', unknownService: 'Service', since: 'Since', all: 'All history', day: 'Last day', hours: 'Last 4 hours', hour: 'Last hour', minutes: 'Last 30 minutes', include: 'Include', exclude: 'Exclude', lines: 'Line count', timestamps: 'Timestamps', pause: 'Pause', configurationUnavailable: 'Could not load log configuration.'},
     taskInspect: {
         title: 'Task inspection', service: 'Service', error: 'Could not load the task inspection.', retry: 'Retry',
         refresh: 'Refresh', lastRead: 'Last read', observed: 'Observed state', desired: 'Desired state', node: 'Node', container: 'Container', image: 'Image', created: 'Created', updated: 'Updated', message: 'Message', exitCode: 'Exit code', executionError: 'Execution error',

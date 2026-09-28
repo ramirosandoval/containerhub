@@ -11,6 +11,7 @@
                     <v-col cols="12" md="1"><v-text-field v-model.number="tail" min="1" :max="maxLogsLines" type="number" :label="t('taskLogs.lines')" @change="reconnect"/></v-col>
                     <v-col class="d-flex align-center" cols="12" md="2"><v-switch v-model="timestamps" :label="t('taskLogs.timestamps')" @update:model-value="reconnect"/><v-switch v-model="paused" :label="t('taskLogs.pause')" @update:model-value="togglePause"/></v-col>
                 </v-row>
+                <v-alert v-if="configurationError" type="error">{{ t('taskLogs.configurationUnavailable') }}</v-alert>
                 <v-progress-linear v-if="connecting" indeterminate/>
                 <log-terminal ref="logTerminal" :scrollback="tail"/>
             </v-card-text>
@@ -24,7 +25,7 @@ import {useI18n} from 'vue-i18n'
 import {useRoute} from 'vue-router'
 import {useAuthStore} from '@drax/identity-vue'
 import LogTerminal from '@/components/logs/LogTerminal.vue'
-import { SettingsApi } from '../../providers/SettingsApi'
+import {restGet} from '@/rest'
 
 const route = useRoute()
 const {t} = useI18n()
@@ -38,6 +39,8 @@ const exclude = ref<string[]>([])
 const paused = ref(false)
 const connecting = ref(false)
 const maxLogsLines = ref(10000)
+const configurationError = ref(false)
+const configurationReady = ref(false)
 let socket: WebSocket | undefined
 
 const taskId = computed(() => String(route.params.taskId))
@@ -67,7 +70,7 @@ function closeSocket(): void {
 }
 
 function reconnect(): void {
-    if (paused.value) return
+    if (paused.value || !configurationReady.value) return
     const validTail = Math.min(maxLogsLines.value, Math.max(1, Math.trunc(Number(tail.value) || 1)))
     tail.value = validTail
     closeSocket()
@@ -98,12 +101,16 @@ function togglePause(): void {
 
 onMounted(async () => {
     try {
-        const settings = await SettingsApi.getSettings()
-        maxLogsLines.value = settings.maxLogsLines
-    } catch (e) {
-        console.error('Failed to load settings', e)
+        const configuration = await restGet<{maxLogsLines: number}>('/api/docker/logs/config')
+        if (!Number.isInteger(configuration.maxLogsLines) || configuration.maxLogsLines < 1) throw new Error('Invalid log limit')
+        maxLogsLines.value = configuration.maxLogsLines
+        tail.value = Math.min(tail.value, maxLogsLines.value)
+        configurationError.value = false
+        configurationReady.value = true
+        reconnect()
+    } catch {
+        configurationError.value = true
     }
-    reconnect()
 })
 onBeforeUnmount(closeSocket)
 </script>
