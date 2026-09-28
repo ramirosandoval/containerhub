@@ -8,9 +8,15 @@ import test, {mock} from 'node:test'
 import {createHostFile} from '../HostVolumeProvisioning.js'
 
 let useLocalNode = false
+let usePartialNodes = false
+let folderAttempts: string[] = []
 class DockerStub {
     info() { return Promise.resolve({Swarm: {NodeID: 'manager'}}) }
     listNodes() {
+        if (usePartialNodes) return Promise.resolve([
+            {ID: 'worker-1', Description: {Hostname: 'unavailable'}, Status: {State: 'down'}, Spec: {Role: 'worker', Availability: 'active'}},
+            {ID: 'worker-2', Description: {Hostname: 'ready'}, Status: {State: 'ready'}, Spec: {Role: 'worker', Availability: 'active'}}
+        ])
         return Promise.resolve([useLocalNode
             ? {ID: 'manager', Description: {Hostname: 'manager'}, Status: {State: 'ready'}, Spec: {Role: 'manager', Availability: 'active'}}
             : {ID: 'worker-1', Description: {Hostname: 'worker', Engine: {EngineVersion: '27'}}, Status: {State: 'ready', Addr: '10.0.0.2'}, Spec: {Role: 'worker', Availability: 'active'}}
@@ -22,7 +28,11 @@ const dockerMock = mock.module('dockerode', {defaultExport: DockerStub})
 const agentMock = mock.module('../AgentHealthClient.js', {namedExports: {
     createAgentHealthClient: () => ({
         isHealthy: async () => true,
-        createFolders: async () => { throw new Error('worker unavailable') },
+        createFolders: async (nodeId: string) => {
+            folderAttempts.push(nodeId)
+            if (nodeId === 'worker-1') throw new Error('worker unavailable')
+            return {success: true}
+        },
         createFiles: async () => { throw new Error('worker unavailable') }
     })
 }})
@@ -32,10 +42,19 @@ test.after(() => {
     dockerMock.restore()
     agentMock.restore()
 })
-test.beforeEach(() => { useLocalNode = false })
+test.beforeEach(() => { useLocalNode = false; usePartialNodes = false; folderAttempts = [] })
 
-test('distributed provisioning does not report success when a worker fails', async () => {
-    await assert.rejects(createFolders([{hostPath: 'data'}]), /worker unavailable/)
+test('folder provisioning reports partial success across nodes', async () => {
+    usePartialNodes = true
+    assert.deepEqual(await createFolders([{hostPath: 'data'}]), {nodes: 2, success: 1})
+    assert.deepEqual(folderAttempts, ['worker-1', 'worker-2'])
+})
+
+test('folder provisioning preserves the legacy response when no node succeeds', async () => {
+    assert.equal(await createFolders([{hostPath: 'data'}]), 'The needed directories are not mounted; please contact your infrastructure team!')
+})
+
+test('file provisioning still fails when a worker fails', async () => {
     await assert.rejects(createFiles([{hostPath: 'data', fileName: 'app.txt', fileContent: 'content'}]), /worker unavailable/)
 })
 
@@ -74,7 +93,7 @@ test('legacy docker-devops host paths are provisioned at their configured host-v
     process.env.CONTAINERHUB_HOST_VOLUME_ROOTS = hostVolumeRoot
     useLocalNode = true
     try {
-        await createFolders([hostPath])
+        assert.deepEqual(await createFolders([hostPath]), {nodes: 1, success: 1})
         await createFiles([{
             hostPath,
             containerPath: '/usr/share/nginx/html',

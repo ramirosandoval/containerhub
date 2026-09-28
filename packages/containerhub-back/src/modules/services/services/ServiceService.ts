@@ -654,14 +654,13 @@ function folderHostPath(folder: FolderInput): string {
     return typeof folder === 'string' ? folder : folder.hostPath ?? folder.path!
 }
 
-export async function createFolders(folders: unknown): Promise<{success: true}> {
+export async function createFolders(folders: unknown): Promise<{nodes: number; success: number} | string> {
     const validatedFolders = await parseServiceInput(FolderInputsSchema, folders)
 
     const dockerInfo = await docker.info()
     const localNodeId = getOptionalField(getRecordField(dockerInfo, 'Swarm'), 'NodeID')
     const nodes = await fetchNodes()
-
-    await Promise.all(nodes.map(async (node) => {
+    const outcomes = await Promise.allSettled(nodes.map(async (node) => {
         if (node.id === localNodeId) {
             await Promise.all(validatedFolders.map((folder) => createHostFolder(folderHostPath(folder))))
         } else {
@@ -670,7 +669,8 @@ export async function createFolders(folders: unknown): Promise<{success: true}> 
         }
     }))
 
-    return {success: true}
+    const success = outcomes.filter((outcome) => outcome.status === 'fulfilled').length
+    return success ? {nodes: nodes.length, success} : 'The needed directories are not mounted; please contact your infrastructure team!'
 }
 
 export async function createFiles(files: unknown): Promise<{message: string}> {
