@@ -59,8 +59,8 @@ import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumns
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
 import RegistryImageDetails from '@/components/RegistryImageDetails.vue'
 import {RegistryImagesCrud, type RegistryImage} from '@/cruds/RegistryImagesCrud'
-import {restGet} from '@/rest'
-import {buildServiceImageUsage, type RepositoryUsage, type ServiceImageUsageInput} from '@/images/serviceImageUsage'
+import {fetchAllServices} from '@/services/serviceGraphql'
+import {buildServiceImageUsage, type RepositoryUsage} from '@/images/serviceImageUsage'
 
 const {t} = useI18n()
 const route = useRoute()
@@ -85,7 +85,7 @@ watch(items, (currentItems) => {
 
 onMounted(async () => {
     try {
-        usage.value = buildServiceImageUsage(await restGet<ServiceImageUsageInput[]>('/api/services'))
+        usage.value = buildServiceImageUsage(await fetchAllServices())
         serviceUsageLoaded.value = true
     } catch {
         serviceUsageLoaded.value = false

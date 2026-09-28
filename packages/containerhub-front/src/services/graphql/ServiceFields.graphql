@@ -1,0 +1,5 @@
+fragment ServiceFields on Service {
+    id name stack createdAt updatedAt
+    image { name nameWithTag namespace domain fullname tag }
+    ports { hostPort containerPort protocol }
+}

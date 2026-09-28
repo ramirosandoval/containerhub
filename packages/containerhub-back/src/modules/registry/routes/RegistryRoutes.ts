@@ -8,6 +8,11 @@ const protectedRoute = {
     schema: {security: [{bearerAuth: []}]}
 }
 
+function requiredQueryString(value: unknown, field: string): string {
+    if (typeof value !== 'string' || !value) throw Object.assign(new Error(`${field} is required`), {statusCode: 400})
+    return value
+}
+
 const listRegistryImagesSchema = {
     summary: 'List registry images',
     tags: ['Registry'],
@@ -18,6 +23,6 @@ const listRegistryImagesSchema = {
 
 export const RegistryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/api/registry/image', {...protectedRoute, schema: listRegistryImagesSchema}, async (request: any) => fetchImages(request.query?.rows ?? '1000'))
-    fastify.get('/api/registry/image/tags', protectedRoute, async (request: any) => fetchImageTags(request.query?.name))
-    fastify.get('/api/registry/image/details', protectedRoute, async (request: any) => fetchImageDetails(request.query?.name, request.query?.reference))
+    fastify.get('/api/registry/image/tags', protectedRoute, async (request: any) => fetchImageTags(requiredQueryString(request.query?.name, 'name')))
+    fastify.get('/api/registry/image/details', protectedRoute, async (request: any) => fetchImageDetails(requiredQueryString(request.query?.name, 'name'), requiredQueryString(request.query?.reference, 'reference')))
 }

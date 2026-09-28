@@ -1,3 +1,5 @@
+import {StringDecoder} from 'node:string_decoder'
+
 function toLogLines(logOutput: string): string[] {
     const lines = logOutput.split(/\r?\n/)
     if (lines.at(-1) === '') lines.pop()
@@ -30,6 +32,7 @@ export function decodeDockerLogOutput(output: Buffer): string[] {
 export function createDockerLogLineDecoder(onLogLine: (logLine: string) => void) {
     let bufferedOutput = Buffer.alloc(0)
     let pendingLine = ''
+    const utf8 = new StringDecoder('utf8')
 
     function emitText(text: string): void {
         const completeLines = `${pendingLine}${text}`.split(/\r?\n/)
@@ -42,7 +45,7 @@ export function createDockerLogLineDecoder(onLogLine: (logLine: string) => void)
             bufferedOutput = Buffer.concat([bufferedOutput, chunk])
             while (bufferedOutput.length) {
                 if (!hasDockerMultiplexedLogHeader(bufferedOutput, 0)) {
-                    emitText(bufferedOutput.toString('utf8'))
+                    emitText(utf8.write(bufferedOutput))
                     bufferedOutput = Buffer.alloc(0)
                     return
                 }
@@ -50,12 +53,13 @@ export function createDockerLogLineDecoder(onLogLine: (logLine: string) => void)
                 const payloadLength = bufferedOutput.readUInt32BE(4)
                 const payloadEnd = 8 + payloadLength
                 if (bufferedOutput.length < payloadEnd) return
-                emitText(bufferedOutput.subarray(8, payloadEnd).toString('utf8'))
+                emitText(utf8.write(bufferedOutput.subarray(8, payloadEnd)))
                 bufferedOutput = bufferedOutput.subarray(payloadEnd)
             }
         },
         end(): void {
-            if (bufferedOutput.length) emitText(bufferedOutput.toString('utf8'))
+            if (bufferedOutput.length) emitText(utf8.write(bufferedOutput))
+            emitText(utf8.end())
             if (pendingLine) onLogLine(pendingLine)
             bufferedOutput = Buffer.alloc(0)
             pendingLine = ''

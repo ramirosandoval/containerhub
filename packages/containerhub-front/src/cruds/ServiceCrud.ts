@@ -1,9 +1,8 @@
 import {EntityCrud} from '@drax/crud-vue'
-import {HttpRestClientFactory} from '@drax/common-front'
-import {useAuthStore} from '@drax/identity-vue'
-import type {IEntityCrud, IDraxCrudProvider, IDraxFieldFilter, IDraxPaginateOptions, IDraxPaginateResult} from '@drax/crud-share'
+import type {IEntityCrud, IDraxCrudProvider} from '@drax/crud-share'
 import {ref} from 'vue'
 import {buildServiceFilterOptions} from './ServiceFilterOptions'
+import {fetchAllServices, paginateServiceList} from '../services/serviceGraphql'
 
 interface ServicePort {
     hostPort: number | null
@@ -30,30 +29,9 @@ export interface Service {
     updatedAt: string | null
 }
 
-const REST_BASE = (import.meta.env.VITE_BACK_URL as string | undefined) ?? ''
-const serviceProvider = new class implements IDraxCrudProvider<Service, never, never> {
-    private get client() {
-        return HttpRestClientFactory.getInstance(REST_BASE)
-    }
-
-    private get authHeader(): Record<string, string> {
-        const token = useAuthStore().accessToken
-        return token ? {Authorization: `Bearer ${token}`} : {}
-    }
-
-    async paginate(opts: IDraxPaginateOptions): Promise<IDraxPaginateResult<Service>> {
-        const filters: IDraxFieldFilter[] = (opts.filters ?? []).filter((filter) => filter.field)
-        const params: Record<string, string | number> = {page: opts.page, limit: opts.limit}
-        if (opts.orderBy) params.orderBy = opts.orderBy
-        if (opts.order) params.order = opts.order
-        if (opts.search) params.search = opts.search
-        if (filters.length) params.filters = JSON.stringify(filters)
-        return (await this.client.get('/api/services/paginate', {params, headers: this.authHeader})) as IDraxPaginateResult<Service>
-    }
-
-    async fetchAll(): Promise<Service[]> {
-        return (await this.client.get('/api/services', {headers: this.authHeader})) as Service[]
-    }
+const serviceProvider: IDraxCrudProvider<Service, never, never> = {
+    paginate: paginateServiceList,
+    fetchAll: fetchAllServices
 }
 
 class ServiceCrud extends EntityCrud {
@@ -134,7 +112,7 @@ class ServiceCrud extends EntityCrud {
     }
 
     async loadFilterOptions(): Promise<void> {
-        this.setFilterOptions(await serviceProvider.fetchAll())
+        this.setFilterOptions(await fetchAllServices())
     }
 }
 

@@ -17,7 +17,7 @@ defineProps({
 <template>
   <v-container fluid>
     <v-row>
-      <template v-for="(item) in menu" key="item.text">
+      <template v-for="(item) in menu" :key="item.text">
 
         <v-col
           v-if="item.gallery && isGranted(item) && item.children && hasChildrenGranted(item.children)"

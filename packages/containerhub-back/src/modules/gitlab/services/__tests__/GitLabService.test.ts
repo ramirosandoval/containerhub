@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
+import {once} from 'node:events'
+import {createServer} from 'node:http'
 import {afterEach, beforeEach, mock, test} from 'node:test'
-import {fetchProjects, fetchTagPipeline} from '../GitLabService.js'
+import {fetchProjectTags, fetchProjects, fetchTagPipeline} from '../GitLabService.js'
 
 beforeEach(() => {
     process.env.GITLAB_URL = 'https://gitlab.example/api/v4/'
@@ -34,6 +36,67 @@ test('omits an empty project search', async () => {
 
     const requestedUrl = new URL(String(fetchMock.mock.calls[0].arguments[0]))
     assert.equal(requestedUrl.searchParams.has('search'), false)
+})
+
+test('returns GitLab tags from every linked page', async () => {
+    const fetchMock = mock.method(globalThis, 'fetch', async (url: URL) => {
+        const next = url.searchParams.get('page') === '2'
+        return new Response(JSON.stringify([{name: next ? 'v2' : 'v1'}]), {
+            headers: next ? {} : {Link: `<${url.origin}${url.pathname}?page=2&per_page=100>; rel="next"`}
+        })
+    })
+    assert.deepEqual(await fetchProjectTags('team/api'), [{name: 'v1'}, {name: 'v2'}])
+    assert.equal(new URL(String(fetchMock.mock.calls[0].arguments[0])).pathname, '/api/v4/projects/team%2Fapi/repository/tags')
+    assert.equal(fetchMock.mock.callCount(), 2)
+})
+
+test('never forwards the GitLab token to a foreign pagination link', async () => {
+    const fetchMock = mock.method(globalThis, 'fetch', async () => new Response('[]', {
+        headers: {Link: '<https://other.example/collect>; rel="next"'}
+    }))
+    await assert.rejects(fetchProjectTags('7'), /pagination link/)
+    assert.equal(fetchMock.mock.callCount(), 1)
+})
+
+test('never sends the GitLab token across an HTTP redirect, including a tag continuation', async (context) => {
+    const receivedTokens: unknown[] = []
+    const foreignServer = createServer((request, response) => {
+        receivedTokens.push(request.headers['private-token'])
+        response.setHeader('content-type', 'application/json')
+        response.end('[]')
+    })
+    foreignServer.listen(0, '127.0.0.1')
+    await once(foreignServer, 'listening')
+    const foreignAddress = foreignServer.address()
+    assert.ok(foreignAddress && typeof foreignAddress !== 'string')
+
+    const gitLabServer = createServer((request, response) => {
+        assert.equal(request.headers['private-token'], 'test-token')
+        if (request.url?.includes('/repository/tags') && !request.url.includes('page=2')) {
+            const gitLabAddress = gitLabServer.address()
+            assert.ok(gitLabAddress && typeof gitLabAddress !== 'string')
+            const pathname = new URL(request.url, 'http://localhost').pathname
+            response.setHeader('Link', `<http://127.0.0.1:${gitLabAddress.port}${pathname}?page=2>; rel="next"`)
+            response.setHeader('content-type', 'application/json')
+            response.end('[{"name":"v1"}]')
+            return
+        }
+        response.writeHead(302, {Location: `http://127.0.0.1:${foreignAddress.port}/collect`})
+        response.end()
+    })
+    gitLabServer.listen(0, '127.0.0.1')
+    await once(gitLabServer, 'listening')
+    context.after(async () => {
+        await Promise.all([gitLabServer, foreignServer].map(server => new Promise<void>(resolve => server.close(() => resolve()))))
+    })
+    const gitLabAddress = gitLabServer.address()
+    assert.ok(gitLabAddress && typeof gitLabAddress !== 'string')
+    process.env.GITLAB_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4/`
+
+    await assert.rejects(fetchProjects(), /redirect/i)
+    await assert.rejects(fetchProjectTags('7'), /redirect/i)
+    await assert.rejects(fetchTagPipeline('7', 'v1'), /redirect/i)
+    assert.deepEqual(receivedTokens, [])
 })
 
 test('returns the latest tag pipeline and its jobs', async () => {

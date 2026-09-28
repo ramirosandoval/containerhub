@@ -1,0 +1,62 @@
+import {expect, test, type Page} from '@playwright/test'
+
+const service = {
+    id: 'service-1', name: 'team_api', stack: 'team',
+    image: {name: 'api', nameWithTag: 'team/api:2', namespace: 'team', domain: null, fullname: 'team/api:2', tag: '2'},
+    ports: [], createdAt: null, updatedAt: null
+}
+
+async function authenticate(page: Page): Promise<string> {
+    const token = [
+        Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
+        Buffer.from(JSON.stringify({exp: 4_102_444_800})).toString('base64url'),
+        'test-only'
+    ].join('.')
+    await page.addInitScript(accessToken => localStorage.setItem('AuthStore', JSON.stringify({
+        accessToken, authUser: {username: 'test', role: {permissions: ['DOCKER_VIEW']}}
+    })), token)
+    return token
+}
+
+test('Services uses authenticated GraphQL pagination and a full list for filter options', async ({page}) => {
+    const token = await authenticate(page)
+    const requests: Array<{query: string; variables: Record<string, unknown>; authorization: string | undefined}> = []
+    await page.route('**/api/**', route => route.abort())
+    await page.route('**/api/docker/version', route => route.fulfill({json: {}}))
+    await page.route('**/graphql', async route => {
+        const body = route.request().postDataJSON() as {query: string; variables?: Record<string, unknown>}
+        requests.push({query: body.query, variables: body.variables ?? {}, authorization: route.request().headers().authorization})
+        await route.fulfill({json: {data: body.query.includes('paginateServices')
+            ? {paginateServices: {page: 1, limit: 10, total: 1, items: [service]}}
+            : {fetchService: [service]}}})
+    })
+    await page.goto('/services')
+    await expect(page.locator('main tbody > tr').first()).toContainText('team_api')
+    await expect.poll(() => requests.some(request => request.query.includes('fetchService'))).toBe(true)
+    const paginated = requests.find(request => request.query.includes('paginateServices'))
+    const fetched = requests.find(request => request.query.includes('fetchService'))
+    expect(fetched?.query).toContain('query FetchServices')
+    expect(fetched?.query).toContain('fragment ServiceFields on Service')
+    expect(fetched?.query).not.toContain('query PaginateServices')
+    expect(paginated?.query).toContain('query PaginateServices')
+    expect(paginated?.query).toContain('fragment ServiceFields on Service')
+    expect(paginated?.query).not.toContain('query FetchServices')
+    expect(paginated?.variables.page).toBe(1)
+    expect(paginated?.authorization).toBe(`Bearer ${token}`)
+})
+
+test('Stacks counts the full GraphQL inventory and links to Services', async ({page}) => {
+    await authenticate(page)
+    await page.route('**/api/**', route => route.abort())
+    await page.route('**/api/docker/version', route => route.fulfill({json: {}}))
+    await page.route('**/graphql', route => route.fulfill({json: {data: {fetchService: [
+        service, {...service, id: 'service-2', name: 'team_worker'},
+        {...service, id: 'service-3', name: 'other_api', stack: 'other'}
+    ]}}}))
+    await page.goto('/stacks')
+    const teamRow = page.locator('main tbody > tr').filter({hasText: 'team'})
+    await expect(teamRow).toContainText('2')
+    const otherRow = page.locator('main tbody > tr').filter({hasText: 'other'})
+    await expect(otherRow).toContainText('1')
+    await expect(teamRow.getByRole('link')).toHaveAttribute('href', /\/services\?stack=team/)
+})

@@ -24,8 +24,9 @@ test('monitoring creation keeps selection, validation, failure and list refresh'
     let listRequests = 0
     let createRequests = 0
     let releaseCreate: (() => void) | undefined
+    await page.route('**/api/**', route => route.abort())
     await page.route('**/api/docker/version', route => route.fulfill({json: {}}))
-    await page.route('**/api/services**', route => route.fulfill({json: availableServices}))
+    await page.route('**/graphql', route => route.fulfill({json: {data: {fetchService: availableServices}}}))
     await page.route('**/api/monitoring-configurations**', async route => {
         const request = route.request()
         const path = new URL(request.url()).pathname

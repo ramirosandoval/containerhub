@@ -17,28 +17,24 @@ const service = {
     updatedAt: null,
 }
 
-async function authenticate(page: Page): Promise<void> {
+async function authenticate(page: Page, permissions = ['DOCKER_VIEW']): Promise<void> {
     const accessToken = [
         Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
         Buffer.from(JSON.stringify({exp: 4_102_444_800})).toString('base64url'),
         'image-navigation-test',
     ].join('.')
-    await page.addInitScript(({token}) => localStorage.setItem('AuthStore', JSON.stringify({
+    await page.addInitScript(({token, permissions: grantedPermissions}) => localStorage.setItem('AuthStore', JSON.stringify({
         accessToken: token,
-        authUser: {username: 'image-navigation-test', role: {permissions: ['DOCKER_VIEW']}},
-    })), {token: accessToken})
+        authUser: {username: 'image-navigation-test', role: {permissions: grantedPermissions}},
+    })), {token: accessToken, permissions})
+    await page.route('**/api/docker/version', route => route.fulfill({json: {Version: 'test', ApiVersion: 'test'}}))
 }
 
 async function mockServices(page: Page): Promise<void> {
-    await page.route('**/api/services**', async (route) => {
-        const url = new URL(route.request().url())
-        await route.fulfill({
-            contentType: 'application/json',
-            body: JSON.stringify(url.pathname.endsWith('/paginate')
-                ? {items: [service], total: 1, page: 1, limit: 10}
-                : [service]),
-        })
-    })
+    await page.route('**/api/services**', route => route.abort())
+    await page.route('**/graphql', route => route.fulfill({json: {data: route.request().postDataJSON().query.includes('paginateServices')
+        ? {paginateServices: {items: [service], total: 1, page: 1, limit: 10}}
+        : {fetchService: [service]}}}))
 }
 
 test('opens the deployed service image in Registry with its tag and manifest details', async ({page}) => {
@@ -60,6 +56,96 @@ test('opens the deployed service image in Registry with its tag and manifest det
     await expect(page).toHaveURL(/\/registry-images\?repository=team\/api&tag=2\.4/)
     await expect(page.getByText('sha256:abc', {exact: true})).toBeVisible()
     await expect(page.getByText('2.4', {exact: true}).first()).toBeVisible()
+    await expect(page.getByText('team_api', {exact: true})).toBeVisible()
+})
+
+test('task summary text can be selected and copied without activating its links', async ({page, context}) => {
+    await authenticate(page, ['DOCKER_VIEW', 'DOCKER_NODES_FETCH'])
+    await page.route('**/api/docker/task/selection-task/inspect', route => route.fulfill({json: {
+        ID: 'selection-task', ServiceID: 'selection-service', NodeID: 'selection-node',
+        Status: {State: 'running', ContainerStatus: {ContainerID: 'selection-container'}},
+        Spec: {ContainerSpec: {Image: 'registry.example/team/api:2.4'}}
+    }}))
+    await page.route('**/api/docker/service/selection-service', route => route.fulfill({json: {name: 'Selection service'}}))
+    await page.goto('/inspect/selection-task')
+    await expect(page.locator('.inspect-summary')).toBeVisible()
+    await expect(page.locator('.inspect-heading')).toContainText('Selection service')
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    const texts = page.locator('.inspect-heading h1, .inspect-heading p, p[role="status"], .inspect-summary dt, .inspect-summary dd')
+    for (let fieldIndex = 0; fieldIndex < await texts.count(); fieldIndex++) {
+        const element = texts.nth(fieldIndex)
+        const box = await element.boundingBox()
+        expect(box, `field ${fieldIndex}`).not.toBeNull()
+        await page.mouse.move(box!.x + 2, box!.y + 8)
+        await page.mouse.down()
+        await page.mouse.move(box!.x + 35, box!.y + 8, {steps: 8})
+        await page.mouse.up()
+        const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '')
+        expect(selected.length, `field ${fieldIndex}`).toBeGreaterThan(0)
+        await page.keyboard.press('ControlOrMeta+c')
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), {message: `field ${fieldIndex}`}).toBe(selected)
+        await expect(page).toHaveURL(/\/inspect\/selection-task$/)
+        await page.evaluate(() => window.getSelection()?.removeAllRanges())
+    }
+    for (const value of ['selection-node', 'registry.example/team/api:2.4']) {
+        const points = await page.getByRole('link', {name: value, exact: true}).evaluate(link => {
+            const text = link.firstChild!
+            const first = document.createRange()
+            first.setStart(text, 0)
+            first.setEnd(text, 1)
+            const last = document.createRange()
+            last.setStart(text, text.textContent!.length - 1)
+            last.setEnd(text, text.textContent!.length)
+            const start = first.getBoundingClientRect()
+            const end = last.getBoundingClientRect()
+            return {start: {x: start.left, y: start.top + start.height / 2}, end: {x: end.right, y: end.top + end.height / 2}}
+        })
+        await page.mouse.move(points.start.x, points.start.y)
+        await page.mouse.down()
+        await page.mouse.move(points.end.x, points.end.y, {steps: 12})
+        await page.mouse.up()
+        expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(value)
+        await page.keyboard.press('ControlOrMeta+c')
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(value)
+        await expect(page).toHaveURL(/\/inspect\/selection-task$/)
+        await page.evaluate(() => window.getSelection()?.removeAllRanges())
+    }
+})
+
+test('task node and image open their filtered lists', async ({page}) => {
+    await authenticate(page, ['DOCKER_VIEW', 'DOCKER_NODES_FETCH'])
+    const imageReference = '192.168.122.1:5000/team/api:2.4'
+    await page.route('**/api/docker/task/selection-task/inspect', route => route.fulfill({json: {
+        ID: 'selection-task', NodeID: 'selection-node', Spec: {ContainerSpec: {Image: imageReference}}
+    }}))
+    await page.route('**/api/docker/nodes', route => route.fulfill({json: [
+        {id: 'selection-node', hostname: 'worker', leader: false, reachability: null},
+        {id: 'another-node', hostname: 'other', leader: false, reachability: null}
+    ]}))
+    await page.route('**/api/registry/image**', route => {
+        const requestPath = new URL(route.request().url()).pathname
+        return route.fulfill({json: requestPath.endsWith('/tags') ? {tags: ['2.4']} : requestPath.endsWith('/details')
+            ? {reference: '2.4', digest: 'sha256:test', mediaType: null, layerCount: 1, compressedSize: null, platforms: []}
+            : [{name: 'team/api', tags: null}]})
+    })
+    await page.goto('/inspect/selection-task')
+    await page.getByRole('link', {name: 'selection-node'}).click()
+    await expect(page).toHaveURL(/\/nodes\?node=selection-node$/)
+    await expect(page.getByRole('textbox', {name: 'Buscar'})).toHaveValue('selection-node')
+    await expect(page.getByRole('main').getByRole('table').getByRole('rowgroup').nth(1).getByRole('row')).toHaveCount(1)
+    await page.goBack()
+    await page.getByRole('link', {name: imageReference}).click()
+    await expect(page).toHaveURL(/\/registry-images\?repository=team\/api&tag=2\.4/)
+    await expect(page.getByRole('textbox', {name: 'Buscar', exact: true})).toHaveValue('team/api')
+    await expect(page.getByText('sha256:test')).toBeVisible()
+})
+
+test('task node remains plain text without node-list permission', async ({page}) => {
+    await authenticate(page)
+    await page.route('**/api/docker/task/selection-task/inspect', route => route.fulfill({json: {ID: 'selection-task', NodeID: 'selection-node'}}))
+    await page.goto('/inspect/selection-task')
+    await expect(page.locator('.inspect-summary')).toContainText('selection-node')
+    await expect(page.getByRole('link', {name: 'selection-node'})).toHaveCount(0)
 })
 
 test('searches GitLab projects and shows the selected tag pipeline jobs', async ({page}) => {
@@ -90,6 +176,7 @@ test('searches GitLab projects and shows the selected tag pipeline jobs', async 
     await page.getByRole('button', {name: /Ver detalles|View details/}).click()
 
     await expect(page.getByText(/Seleccioná un tag|Select a tag/)).toBeVisible()
+    await expect(page.getByText('team_api · 2.4')).toBeVisible()
     const pipelineRequest = page.waitForRequest((request) => {
         const url = new URL(request.url())
         return url.pathname.endsWith('/tag-pipeline') && url.searchParams.get('tag') === 'v2.4'

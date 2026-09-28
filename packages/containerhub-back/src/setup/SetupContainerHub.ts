@@ -57,7 +57,7 @@ export function resolveContainerHubBootstrapUser(environment: NodeJS.ProcessEnv 
 async function createRolesAndBootstrapUser(bootstrapUser: IUserCreate | null) {
     await CreateOrUpdateRole({
         name: 'Admin',
-        permissions: [...dockerPermissions, ...identityPermissions, ...auditPermissions],
+        permissions: [...dockerPermissions, ...identityPermissions, ...auditPermissions, ...settingsPermissions],
         childRoles: [],
         readonly: true
     })

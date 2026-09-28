@@ -137,6 +137,7 @@ import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumns
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
 import {GitLabProjectsCrud, type GitLabProject} from '@/cruds/GitLabProjectsCrud'
 import {restGet} from '@/rest'
+import {fetchAllServices} from '@/services/serviceGraphql'
 import {projectRegistryTarget} from '@/images/registryImageReference'
 import {projectServiceUsage, type ServiceImageUsageInput} from '@/images/serviceImageUsage'
 
@@ -165,7 +166,7 @@ const pipelineErrors = ref<Record<string, string>>({})
 
 onMounted(async () => {
     try {
-        services.value = await restGet<ServiceImageUsageInput[]>('/api/services')
+        services.value = await fetchAllServices()
         servicesLoaded.value = true
     } catch {
         servicesLoaded.value = false

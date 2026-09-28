@@ -25,7 +25,8 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
         const openApiDocument = (server.fastify as {swagger(): {openapi: string; paths: Record<string, unknown>; components?: {securitySchemes?: Record<string, unknown>}}}).swagger()
 
         assert.equal(openApiDocument.openapi, '3.0.3')
-        assert.ok(openApiDocument.paths['/api/services'])
+        assert.equal(openApiDocument.paths['/api/services'], undefined)
+        assert.equal(openApiDocument.paths['/api/services/paginate'], undefined)
         assert.ok(openApiDocument.paths['/api/audits'])
         assert.deepEqual(openApiDocument.components?.securitySchemes?.bearerAuth, {
             type: 'http', scheme: 'bearer', bearerFormat: 'JWT'
@@ -34,10 +35,7 @@ test('publishes an OpenAPI document for ContainerHub REST routes', async () => {
             type: 'apiKey', in: 'header', name: 'X-API-Key'
         })
         const documentedPaths = openApiDocument.paths as Record<string, DocumentedPath>
-        assert.deepEqual(documentedPaths['/api/services']?.get?.security, [{bearerAuth: []}, {apiKeyAuth: []}])
         assert.deepEqual(documentedPaths['/api/audits']?.get?.security, [{bearerAuth: []}, {apiKeyAuth: []}])
-        const paginatedServices = documentedPaths['/api/services/paginate']?.get
-        assert.equal(paginatedServices?.parameters?.some((parameter) => parameter.name === 'orderBy'), true)
         assert.equal(documentedPaths['/api/registry/image']?.get?.summary, 'List registry images')
         assert.equal(documentedPaths['/api/gitlab/project']?.get?.summary, 'List GitLab projects')
         const tagPipeline = documentedPaths['/api/gitlab/project/{id}/tag-pipeline']?.get

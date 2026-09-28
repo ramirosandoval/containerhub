@@ -36,3 +36,16 @@ export function projectRegistryTarget(prefix: string): {repository: string; regi
     if (!repository) throw new Error('registry repository is required')
     return {repository, registryDomain}
 }
+
+export function inspectionRegistryTarget(reference: string): {repository: string; tag: string | null} | null {
+    const withoutDigest = reference.split('@', 1)[0]
+    const tagSeparator = withoutDigest.lastIndexOf(':')
+    const tag = tagSeparator > withoutDigest.lastIndexOf('/') ? withoutDigest.slice(tagSeparator + 1) : null
+    const path = tag === null ? withoutDigest : withoutDigest.slice(0, tagSeparator)
+    if (!path || tag === '') return null
+    try {
+        return {repository: path.includes('/') ? projectRegistryTarget(path).repository : path, tag}
+    } catch {
+        return null
+    }
+}

@@ -13,3 +13,10 @@ test('omits inactive monitoring filters before serializing the list request', ()
 
     assert.deepEqual(filters, [{field: 'status', operator: 'eq', value: 'monitoring'}])
 })
+
+test('preserves empty filters without a value', () => {
+    assert.deepEqual(activeMonitoringFilters([
+        {field: 'serviceName', operator: 'empty', value: null},
+        {field: 'status', operator: 'eq', value: null},
+    ]), [{field: 'serviceName', operator: 'empty', value: null}])
+})

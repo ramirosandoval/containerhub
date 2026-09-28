@@ -1,0 +1,5 @@
+query PaginateServices($page: Int!, $limit: Int!, $orderBy: String, $order: ServiceOrder, $search: String, $filters: String) {
+    paginateServices(page: $page, limit: $limit, orderBy: $orderBy, order: $order, search: $search, filters: $filters) {
+        page limit total items { ...ServiceFields }
+    }
+}

@@ -75,6 +75,7 @@ test('remove many reports the Docker outcome when audit persistence fails afterw
 
 async function removeServer() {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         const bearerToken = request.headers.authorization?.replace(/^Bearer /, '')
         ;(request as any).authUser = bearerToken ? {id: 'user-1', username: 'operator', roleName: 'Admin'} : null

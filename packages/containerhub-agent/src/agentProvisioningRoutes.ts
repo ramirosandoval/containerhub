@@ -78,17 +78,18 @@ async function writeSecureFile(root: string, target: string, content: string, da
     let file
     try {
         try {
-            file = await open(filePath, constants.O_WRONLY | constants.O_NOFOLLOW)
+            file = await open(filePath, constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
         } catch (error) {
             if (!isNodeError(error, 'ENOENT')) throw error
             try {
-                file = await open(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o666)
+                file = await open(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o666)
             } catch (createError) {
                 if (!isNodeError(createError, 'EEXIST')) throw createError
-                file = await open(filePath, constants.O_WRONLY | constants.O_NOFOLLOW)
+                file = await open(filePath, constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
             }
         }
         const candidate = await file.stat()
+        if (!candidate.isFile()) throw new Error('Target must be a regular file')
         try {
             const database = await stat(databasePath)
             if (candidate.dev === database.dev && candidate.ino === database.ino) throw new Error(`Refusing to overwrite ContainerHub database file: ${target}`)

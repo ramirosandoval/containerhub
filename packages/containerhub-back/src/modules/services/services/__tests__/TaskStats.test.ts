@@ -67,6 +67,7 @@ test('service stats share task routing and preserve null stats for unassigned ta
 
 test('stats endpoint enforces permission and returns 503 rather than local fallback when the worker fails', async () => {
     const server = Fastify()
+    server.setValidatorCompiler(() => () => true)
     server.addHook('onRequest', async (request) => {
         ;(request as any).rbac = {assertPermission(permission: string) {
             if (request.headers.authorization !== 'Bearer stats-reader' || permission !== 'DOCKER_VIEW') {

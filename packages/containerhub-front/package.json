@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --import tsx --test src/**/__tests__/**/*.test.ts",
+    "test": "node --import tsx --experimental-test-module-mocks --test src/**/__tests__/**/*.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

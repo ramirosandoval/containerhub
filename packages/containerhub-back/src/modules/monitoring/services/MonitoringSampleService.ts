@@ -22,7 +22,8 @@ export class MonitoringSampleService extends AbstractService<IMonitoringSample, 
         const filters: IDraxFieldFilter[] = [{field: 'configurationId', operator: 'eq', value: configurationId}]
         if (options.since) filters.push({field: 'sampledAt', operator: 'gte', value: options.since})
         if (options.until) filters.push({field: 'sampledAt', operator: 'lte', value: options.until})
-        return this.find({limit: Math.min(options.limit ?? 500, 1_000), orderBy: 'sampledAt', order: 'asc', search: '', filters})
+        const latest = await this.find({limit: Math.min(options.limit ?? 500, 1_000), orderBy: 'sampledAt', order: 'desc', search: '', filters})
+        return latest.reverse()
     }
 
     async prune(configuration: IMonitoring, now = new Date()): Promise<number> {

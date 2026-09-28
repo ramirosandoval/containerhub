@@ -6,11 +6,13 @@ function gitLabUrl(path: string, query?: Record<string, string>) {
     return url
 }
 
-async function gitLabFetch(path: string, query?: Record<string, string>) {
-    const response = await fetch(gitLabUrl(path, query), {
+async function gitLabFetch(path: string | URL, query?: Record<string, string>) {
+    const response = await fetch(path instanceof URL ? path : gitLabUrl(path, query), {
         headers: {'Private-Token': process.env.GITLAB_TOKEN as string},
+        redirect: 'manual',
         signal: AbortSignal.timeout(10_000)
     })
+    if (response.status >= 300 && response.status < 400) throw new Error('GitLab request redirected')
     if (!response.ok) throw new Error(`GitLab request failed with status ${response.status}`)
     return response
 }
@@ -75,7 +77,25 @@ export async function fetchProjects({page = '1', perPage = '10', search = ''}: {
 }
 
 export async function fetchProjectTags(id: string) {
-    return (await gitLabFetch(`projects/${encodeURIComponent(id)}/repository/tags`)).json()
+    // ponytail: load all tags for the current selector; page on demand if large projects become slow.
+    const firstUrl = gitLabUrl(`projects/${encodeURIComponent(id)}/repository/tags`, {per_page: '100'})
+    let url = firstUrl
+    const visited = new Set<string>()
+    const tags: unknown[] = []
+    while (true) {
+        if (visited.has(url.href)) throw new Error('Invalid GitLab pagination link')
+        visited.add(url.href)
+        const response = await gitLabFetch(url)
+        tags.push(...await response.json() as unknown[])
+        const link = response.headers.get('link')?.match(/<([^>]+)>\s*;\s*rel="?next"?/i)?.[1]
+        if (!link) return tags
+        const next = new URL(link, url)
+        next.hash = ''
+        if (next.origin !== firstUrl.origin || next.pathname !== firstUrl.pathname || next.username || next.password) {
+            throw new Error('Invalid GitLab pagination link')
+        }
+        url = next
+    }
 }
 
 export async function fetchTagPipeline(projectId: string, tag: string): Promise<GitLabTagPipeline> {

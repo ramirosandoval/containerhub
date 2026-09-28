@@ -2,7 +2,7 @@
 
 **Fuente de producto:** `../docker-fortes/apps/frontend`.  
 **Destino:** `packages/containerhub-front` y `packages/containerhub-back`.  
-**Actualizado:** 2026-09-01.  
+**Actualizado:** 2026-09-24.
 **Regla:** este documento separa evidencia de código de propuestas. Un elemento no se implementa sólo por estar inventariado.
 
 ## Estados
@@ -16,8 +16,8 @@
 
 | ID | Estado | Corrección / hallazgo | Evidencia original | Evidencia actual | Alcance mínimo |
 |---|---|---|---|---|---|
-| S-01 | **Implementado; UI por verificar** | Precargar Stack con los stacks presentes en los servicios y ordenarlos alfabéticamente. | `StackCombobox.vue:41-52` carga `fetchStack()` y ordena por `name`; `DockerStackService.js:6-24` deriva stacks y contador desde `docker.listServices()`. | `GET /api/services` ya devuelve todos los servicios (`ServiceRoutes.ts:17`); cada modelo contiene `stack` (`mapInspectToServiceModel.ts:24-30`). | Un único preload al entrar a Services; deduplicar valores no vacíos y usar un filtro Drax `select` nativo. Sin endpoint nuevo. |
-| S-02 | **Implementado; UI por verificar** | Precargar Imagen con los `image.nameWithTag` únicos de todos los servicios. | `ImageCombobox.vue:40-60` carga todos los servicios y deduplica `image.nameWithTag`. | El mismo campo está en el modelo actual (`mapInspectToServiceModel.ts:31-38`) y `GET /api/services` existe. | Reutilizar la misma respuesta de S-01; no consultar por cada pulsación ni depender de la página actual de 10 filas. |
+| S-01 | **Implementado; UI por verificar** | Precargar Stack con los stacks presentes en los servicios y ordenarlos alfabéticamente. | `StackCombobox.vue:41-52` carga `fetchStack()` y ordena por `name`; `DockerStackService.js:6-24` deriva stacks y contador desde `docker.listServices()`. | GraphQL `fetchService` devuelve todos los servicios (`Service.resolvers.ts`); cada modelo contiene `stack` (`mapInspectToServiceModel.ts`). | Un único preload al entrar a Services; deduplicar valores no vacíos y usar un filtro Drax `select` nativo. Sin endpoint nuevo. |
+| S-02 | **Implementado; UI por verificar** | Precargar Imagen con los `image.nameWithTag` únicos de todos los servicios. | `ImageCombobox.vue:40-60` carga todos los servicios y deduplica `image.nameWithTag`. | El mismo campo está en GraphQL `fetchService` y el modelo actual (`mapInspectToServiceModel.ts`). | Reutilizar la misma respuesta de S-01; no consultar por cada pulsación ni depender de la página actual de 10 filas. |
 | S-03 | **Decisión de producto** | El original aplicaba Stack/Imagen inmediatamente y hacía una consulta completa al cambiar Stack; nombre, puertos y fechas se filtraban localmente. | `ServicesPage.vue:49-138, 513-546`. | ContainerHub usa paginación/filtros servidor y botón `FILTRAR` (`ServiceCrud.ts:42-49, 83-90`). | Conservar el límite explícito actual salvo decisión expresa de recuperar filtrado inmediato; no cambiarlo al añadir S-01/S-02. |
 | S-04 | **Implementado; API/UI por verificar** | La ordenación de Imagen resuelve explícitamente `image.nameWithTag` antes de comparar. | La tabla original muestra `image.nameWithTag` (`ServicesPage.vue:180-201`). | `ServiceCrud.ts:76`; `ServiceService.ts:24-26,63-64`; prueba focalizada `ServiceService.test.ts`. | Sin cambio de UI ni contrato. Falta comprobar el endpoint autorizado y la tabla con dos imágenes distintas. |
 | S-05 | **UI pendiente** | Restaurar la ayuda de puertos cuando haya más de un puerto (lista ampliable/diálogo), si se confirma necesaria. | `ServicePortsVisualization.vue:19-58`; la tabla lo usa en `ServicesPage.vue:176-178`. | El modelo ya entrega todos los puertos (`mapInspectToServiceModel.ts:39-45`); la UI actual sólo los concatena. | Componente visual pequeño sobre el dato existente. No requiere API. |
@@ -28,13 +28,13 @@
 
 ### Nota de escala para S-01/S-02
 
-El original ya cargaba la lista completa para obtener imágenes. Reutilizar `GET /api/services` mantiene esa semántica. Si el número de servicios hace costosa esa carga, el siguiente escalón sería un endpoint de facetas (`stacks`, `images`); no crear ese endpoint preventivamente.
+El original ya cargaba la lista completa para obtener imágenes. Reutilizar GraphQL `fetchService` mantiene esa semántica. Si el número de servicios hace costosa esa carga, el siguiente escalón sería un endpoint de facetas (`stacks`, `images`); no crear ese endpoint preventivamente.
 
 ## Prioridad 1 — Pantallas cuyo backend ya existe
 
 | ID | Estado | Pantalla/flujo original | Evidencia original | Evidencia actual | Alcance mínimo |
 |---|---|---|---|---|---|
-| D-01 | **Implementado; API/UI por verificar** | Stacks: listado y enlace a Services filtrado por stack. | Ruta `/docker/stacks` y enlace a Services (`DockerRoutes.js:27-44`; `StacksPage.vue:65`). | Servicios completos ya disponibles en `/api/services`; falta ruta y página frontend. | Lista derivada de servicios con contador; enlazar a `/services` con filtro o query sólo si se decide preservar navegación por stack. |
+| D-01 | **Implementado; API/UI por verificar** | Stacks: listado y enlace a Services filtrado por stack. | Ruta `/docker/stacks` y enlace a Services (`DockerRoutes.js:27-44`; `StacksPage.vue:65`). | `StacksCrud.ts` deriva el contador de GraphQL `fetchService`; `StacksPage.vue` enlaza a `/services?stack=…`. | Lista derivada de servicios con contador; verificar API autorizada y navegador con Docker real. |
 | D-02 | **Implementado; API/UI por verificar** | Nodes. | Ruta `/docker/nodes` (`DockerRoutes.js:47-55`); tabla en `NodesPage.vue`. | `GET /api/docker/nodes` (`ServiceRoutes.ts:60`). | Página de sólo lectura contra el endpoint existente. |
 | D-03 | **Implementado; API/UI por verificar** | Networks. | Ruta `/docker/networks` (`DockerRoutes.js:57-65`); tabla y filtros en `NetworksPage.vue`, `NetworkFilters.vue`. | Listado, detalle y mutaciones están expuestos (`ServiceRoutes.ts:63-73`). | Migrar primero listado/filtros; mutaciones sólo si se confirman como alcance. |
 | D-04 | **Implementado; API/UI por verificar** | Ghost containers. | Ruta `/docker/ghostContainers/` (`DockerRoutes.js:151-159`). | `GET /api/docker/ghostContainers` (`ServiceRoutes.ts:61`). | Tabla de sólo lectura; validar primero el formato de respuesta real. |
@@ -47,7 +47,7 @@ El original ya cargaba la lista completa para obtener imágenes. Reutilizar `GET
 | ID | Estado | Hallazgo | Evidencia original | Evidencia actual | Alcance mínimo |
 |---|---|---|---|---|---|
 | G-01 | **Implementado; UI por verificar** | El guard de Services autentica pero no comprueba `DOCKER_VIEW` en la ruta. | Las rutas Docker declaran permiso y el guard lo verifica (`DockerRoutes.js:37-44`; `router/index.js:32-47`). | `/services` sólo declara `requiresAuth`, y el guard sólo valida sesión (`containerhub-front/src/router/index.ts:14-18,33-42`). El backend sigue protegido. | Antes de escribir guard local, localizar el mecanismo Drax ya instalado o aplicar la convención actual de forma centralizada; verificar con un usuario sin permiso. |
-| G-02 | **Verificar Drax** | Los errores REST no tienen manejo observable propio en `src`. | Apollo centralizaba errores y snackbar (`docker-fortes/apps/frontend/src/apollo/index.js:9-35`; `ErrorSnackbar.vue:3-12`). | Services llama el cliente REST directamente (`ServiceCrud.ts:37-49`). | Inspeccionar primero interceptor/notificación de `@drax/common-front`; no añadir `try/catch` dispersos por página. |
+| G-02 | **Verificar Drax** | Los errores de transporte no tienen manejo observable propio en `src`. | Apollo centralizaba errores y snackbar (`docker-fortes/apps/frontend/src/apollo/index.js:9-35`; `ErrorSnackbar.vue:3-12`). | Services usa `HttpGqlClientFactory` mediante `serviceGraphql.ts`. | Inspeccionar primero el manejo de errores de `@drax/common-front`; no añadir `try/catch` dispersos por página. |
 | G-03 | **Implementado; UI local verificada** | El tab del navegador actualiza título e icono según la sección activa y restablece los valores de ContainerHub en Inicio. | El router original actualiza título/favicon (`router/index.js:15-30`); terminal, inspect y estadísticas declaran assets especializados. | `router.afterEach` reutiliza el icono MDI de `navigation.ts` para cada sección del menú y conserva los assets específicos de vistas de tarea (`packages/containerhub-front/src/router/index.ts`); `e2e/browser-tab.spec.ts` verifica las rutas reportadas y el reset en Chromium. | Mantener la prueba de navegador; no acoplar el título a cargas API salvo que se solicite recuperar los nombres contextuales de servicio/contenedor. |
 
 ## Prioridad 2 — Requieren contrato o integración adicional

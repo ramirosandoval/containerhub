@@ -13,7 +13,11 @@
             <dl v-if="inspection" class="inspect-summary mt-4 pt-4">
                 <div v-for="field in summary" :key="field.label">
                     <dt class="text-caption text-medium-emphasis">{{ t(`taskInspect.${field.label}`) }}</dt>
-                    <dd class="text-body-2 inspect-value">{{ field.value ?? '—' }}</dd>
+                    <dd class="text-body-2 inspect-value">
+                        <router-link v-if="field.label === 'node' && field.value && hasPermission('DOCKER_NODES_FETCH')" :to="{name: 'nodes', query: {node: String(field.value)}}" draggable="false" class="text-primary text-decoration-underline" @click.capture="preserveSelection">{{ field.value }}</router-link>
+                        <router-link v-else-if="field.label === 'image' && imageTarget" :to="{name: 'registry-images', query: {repository: imageTarget.repository, tag: imageTarget.tag ?? undefined}}" draggable="false" class="text-primary text-decoration-underline" @click.capture="preserveSelection">{{ field.value }}</router-link>
+                        <template v-else>{{ field.value ?? '—' }}</template>
+                    </dd>
                 </div>
             </dl>
             <v-alert v-if="executionError" type="warning" variant="tonal" class="mt-4 inspect-value">{{ t('taskInspect.executionError') }}: {{ executionError }}</v-alert>
@@ -56,13 +60,16 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, ref, watch} from 'vue'
 import {formatDateTime} from '@drax/common-front'
+import {useAuth} from '@drax/identity-vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute} from 'vue-router'
+import {inspectionRegistryTarget} from '@/images/registryImageReference'
 import {restGet} from '@/rest'
 import {taskInspectTree, type TaskInspectTreeItem} from './taskInspectTree'
 import {toServiceTask} from './taskContract'
 
 const {t} = useI18n()
+const {hasPermission} = useAuth()
 const route = useRoute()
 const loading = ref(false)
 const failed = ref(false)
@@ -83,6 +90,11 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function text(value: unknown) { return typeof value === 'string' && value ? value : undefined }
 const status = computed(() => record(inspection.value?.Status))
 const executionError = computed(() => text(status.value?.Err))
+const image = computed(() => text(record(record(inspection.value?.Spec)?.ContainerSpec)?.Image))
+const imageTarget = computed(() => inspectionRegistryTarget(image.value ?? ''))
+function preserveSelection(event: MouseEvent) {
+    if (event.detail && window.getSelection()?.toString()) event.preventDefault()
+}
 const summary = computed(() => {
     const containerStatus = record(status.value?.ContainerStatus)
     return [
@@ -90,7 +102,7 @@ const summary = computed(() => {
         {label: 'desired', value: text(inspection.value?.DesiredState)},
         {label: 'node', value: task.value?.nodeId},
         {label: 'container', value: task.value?.containerId},
-        {label: 'image', value: text(record(record(inspection.value?.Spec)?.ContainerSpec)?.Image)},
+        {label: 'image', value: image.value},
         {label: 'created', value: task.value?.createdAt ? formatDateTime(task.value.createdAt) : undefined},
         {label: 'updated', value: task.value?.updatedAt ? formatDateTime(task.value.updatedAt) : undefined},
         {label: 'message', value: text(status.value?.Message)},

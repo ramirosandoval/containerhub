@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
 import test, {mock} from 'node:test'
+import {once} from 'node:events'
+import {PassThrough} from 'node:stream'
 import Fastify from 'fastify'
+import websocket from '@fastify/websocket'
+import WebSocket from 'ws'
 
 const dockerCalls = {
     taskIds: [] as string[]
 }
 let dockerTasks: Array<Record<string, unknown>> = []
+let onStreamRequested: (() => void) | undefined
+let resolveLogStream: ((stream: PassThrough) => void) | undefined
 
 class DockerStub {
     getService() {
@@ -23,7 +29,9 @@ class DockerStub {
 
     getTask(taskId: string) {
         dockerCalls.taskIds.push(taskId)
-        return {logs: async () => Buffer.from('service log\n', 'utf8')}
+        return {logs: () => onStreamRequested
+            ? new Promise<PassThrough>((resolve) => { resolveLogStream = resolve; onStreamRequested?.() })
+            : Promise.resolve(Buffer.from('service log\n', 'utf8'))}
     }
 }
 
@@ -38,6 +46,8 @@ test.after(() => { dockerodeMock.restore(); settingsMock.restore() })
 
 test.beforeEach(() => {
     dockerCalls.taskIds.length = 0
+    onStreamRequested = undefined
+    resolveLogStream = undefined
     dockerTasks = [
         {ID: 'task-failed', Status: {State: 'failed'}},
         {ID: 'task-running', Status: {State: 'running'}}
@@ -60,6 +70,7 @@ test('service logs return null when no task is running', async () => {
 
 async function serviceLogServer() {
     const fastify = Fastify()
+    await fastify.register(websocket)
     fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         const bearerToken = request.headers.authorization?.replace(/^Bearer /, '')
@@ -118,6 +129,37 @@ test('service logs deny an unauthenticated request', async () => {
         assert.equal(response.statusCode, 401)
         assert.deepEqual(dockerCalls.taskIds, [])
     } finally {
+        await fastify.close()
+    }
+})
+
+test('closes a log stream that starts after its WebSocket closes', async () => {
+    const fastify = await serviceLogServer()
+    await fastify.listen({host: '127.0.0.1', port: 0})
+    const port = (fastify.server.address() as {port: number}).port
+    const streamRequested = new Promise<void>((resolve) => { onStreamRequested = resolve })
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/api/docker/task/task-1/logs/stream`, {
+        headers: {authorization: 'Bearer logs-user'}
+    })
+    const stream = new PassThrough()
+    try {
+        await once(socket, 'open')
+        socket.send(JSON.stringify({tail: 30}))
+        await streamRequested
+        const serverSocket = [...fastify.websocketServer.clients][0]!
+        const secondMessage = once(serverSocket, 'message')
+        socket.send(JSON.stringify({tail: 30}))
+        await secondMessage
+        assert.deepEqual(dockerCalls.taskIds, ['task-1'])
+        socket.close()
+        await once(socket, 'close')
+        resolveLogStream!(stream)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        assert.equal(stream.destroyed, true)
+    } finally {
+        onStreamRequested = undefined
+        socket.terminate()
+        stream.destroy()
         await fastify.close()
     }
 })

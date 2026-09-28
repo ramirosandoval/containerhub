@@ -6,20 +6,44 @@ function registryUrl(path: string, query?: Record<string, string>) {
     return url
 }
 
-async function registryFetch(path: string, query?: Record<string, string>, headers?: Record<string, string>) {
-    const response = await fetch(registryUrl(path, query), {headers, signal: AbortSignal.timeout(10_000)})
+async function registryFetch(path: string | URL, query?: Record<string, string>, headers?: Record<string, string>) {
+    const response = await fetch(path instanceof URL ? path : registryUrl(path, query), {headers, signal: AbortSignal.timeout(10_000)})
     if (!response.ok) throw new Error(`Registry request failed with status ${response.status}`)
     return response
 }
 
+async function registryList(path: string, field: 'repositories' | 'tags', query?: Record<string, string>): Promise<Record<string, unknown>> {
+    // ponytail: load the full list for client-side search/export; paginate at the API if catalogs outgrow memory.
+    const firstUrl = registryUrl(path, query)
+    let url = firstUrl
+    const visited = new Set<string>()
+    const entries: string[] = []
+    let firstPage: Record<string, unknown> = {}
+    while (true) {
+        if (visited.has(url.href)) throw new Error('Invalid Registry pagination link')
+        visited.add(url.href)
+        const response = await registryFetch(url)
+        const page = await response.json() as Record<string, string[] | null>
+        if (visited.size === 1) firstPage = page
+        entries.push(...(page[field] ?? []))
+        const link = response.headers.get('link')?.match(/<([^>]+)>\s*;\s*rel="?next"?/i)?.[1]
+        if (!link) return visited.size === 1 ? firstPage : {...firstPage, [field]: entries}
+        const next = new URL(link, url)
+        next.hash = ''
+        if (next.origin !== firstUrl.origin || next.pathname !== firstUrl.pathname || next.username || next.password) {
+            throw new Error('Invalid Registry pagination link')
+        }
+        url = next
+    }
+}
+
 export async function fetchImages(rows = '1000') {
-    const payload = await (await registryFetch('_catalog', {n: rows})).json() as {repositories?: string[]}
+    const payload = await registryList('_catalog', 'repositories', {n: rows}) as {repositories?: string[]}
     return (payload.repositories ?? []).map((name) => ({name, tags: null}))
 }
 
 export async function fetchImageTags(name: string) {
-    if (!name) throw new Error('name is required')
-    return (await registryFetch(`${name}/tags/list`)).json()
+    return registryList(`${encodedRepository(name)}/tags/list`, 'tags')
 }
 
 const manifestAccept = [
@@ -30,9 +54,10 @@ const manifestAccept = [
 ].join(', ')
 
 function encodedRepository(repository: string): string {
-    if (!repository) throw new Error('valid repository is required')
-    const segments = repository.split('/')
-    if (!segments.length || segments.some((segment) => !segment || segment === '.' || segment === '..')) throw new Error('valid repository is required')
+    const segments = repository?.split('/')
+    if (!segments || segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+        throw Object.assign(new Error('valid repository is required'), {statusCode: 400})
+    }
     return segments.map(encodeURIComponent).join('/')
 }
 
