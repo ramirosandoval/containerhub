@@ -35,6 +35,7 @@ test.after(() => dockerodeMock.restore())
 
 test('task inspect requires DOCKER_VIEW, redacts secret values and reports missing tasks', async () => {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         const permissions = request.headers.authorization === 'Bearer config-user'
             ? new Set(['DOCKER_VIEW', 'DOCKER_CONFIGURATION_VIEW'])

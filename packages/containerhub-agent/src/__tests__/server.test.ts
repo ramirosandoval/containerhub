@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import {link, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
+import {execFileSync} from 'node:child_process'
+import {constants} from 'node:fs'
+import {link, mkdtemp, open, readFile, rm, symlink, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import test from 'node:test'
@@ -29,6 +31,35 @@ test('agent stats validates the container identifier and reads its local daemon'
         assert.equal((await server.inject('/containers/not-an-id/stats')).statusCode, 400)
         assert.equal(statsRequests, 1)
     } finally { await server.close() }
+})
+
+test('agent rejects an existing FIFO without waiting for a reader', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'containerhub-agent-fifo-'))
+    const fifo = join(root, 'blocked.fifo')
+    execFileSync('mkfifo', [fifo])
+    const server = buildAgentServer({
+        docker: {ping: async () => 'OK', listContainers: async () => [], getContainer: () => { throw new Error('not used') }},
+        nodeId: 'worker-1', dockerDataPath: root, hostVolumeRoots: [root]
+    })
+    const pending = server.inject({method: 'POST', url: '/files', payload: [{hostPath: root, fileName: 'blocked.fifo', fileContent: 'content'}]})
+    let timer: NodeJS.Timeout | undefined
+    try {
+        const response = await Promise.race([pending, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 1_000) })])
+        assert.ok(response, 'FIFO request must not wait for a reader')
+        assert.notEqual(response.statusCode, 200)
+    } finally {
+        if (timer) clearTimeout(timer)
+        const reader = await open(fifo, constants.O_RDONLY | constants.O_NONBLOCK)
+        try {
+            await pending
+            const withReader = await server.inject({method: 'POST', url: '/files', payload: [{hostPath: root, fileName: 'blocked.fifo', fileContent: 'content'}]})
+            assert.match(withReader.body, /regular file/)
+        } finally {
+            await reader.close()
+            await server.close()
+            await rm(root, {recursive: true, force: true})
+        }
+    }
 })
 
 test('agent health reports the Docker daemon assigned to this node', async () => {

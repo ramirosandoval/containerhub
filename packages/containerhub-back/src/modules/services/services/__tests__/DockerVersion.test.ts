@@ -15,6 +15,7 @@ test.after(() => dockerodeMock.restore())
 
 test('Docker version endpoint returns the legacy fields to a user with DOCKER_VIEW', async () => {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         ;(request as any).rbac = {
             assertPermission(permission: string) {

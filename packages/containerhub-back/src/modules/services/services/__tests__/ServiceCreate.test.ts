@@ -9,6 +9,7 @@ const inspectedServiceIds: string[] = []
 const auditRecords: Array<Record<string, unknown>> = []
 const createdServiceSpecs: DockerServiceSpec[] = []
 const createdNetworkNames: string[] = []
+let networkInspectError: Error & {statusCode?: number} = Object.assign(new Error('network not found'), {statusCode: 404})
 const mutationContext = {
     user: {id: 'user-1', username: 'operator', roleName: 'Admin'},
     ip: '127.0.0.1',
@@ -37,7 +38,7 @@ class DockerStub {
     }
 
     getNetwork() {
-        return {inspect: async () => { throw new Error('network not found') }}
+        return {inspect: async () => { throw networkInspectError }}
     }
 
     createNetwork(network: {Name: string}) {
@@ -52,12 +53,25 @@ const auditMock = mock.module('@drax/audit-back', {
         AuditServiceFactory: {instance: {create: async (record: Record<string, unknown>) => auditRecords.push(record)}}
     }
 })
-const {createService} = await import('../ServiceService.js')
+const {createService, getOrCreateNetwork} = await import('../ServiceService.js')
 const {default: ServiceRoutes} = await import('../../routes/ServiceRoutes.js')
 
 test.after(() => {
     dockerodeMock.restore()
     auditMock.restore()
+})
+
+test('does not create a network when Docker inspect fails for another reason', async () => {
+    const unavailable = Object.assign(new Error('docker unavailable'), {statusCode: 503})
+    networkInspectError = unavailable
+    const previousCreates = createdNetworkNames.length
+    try {
+        await assert.rejects(getOrCreateNetwork('shared'), (error: unknown) => error === unavailable)
+        assert.equal(createdNetworkNames.length, previousCreates)
+    } finally {
+        createdNetworkNames.length = previousCreates
+        networkInspectError = Object.assign(new Error('network not found'), {statusCode: 404})
+    }
 })
 
 test('create service inspects and audits the lowercase id returned by Dockerode', async () => {

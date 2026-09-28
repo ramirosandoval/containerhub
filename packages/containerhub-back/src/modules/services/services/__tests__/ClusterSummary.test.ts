@@ -30,6 +30,7 @@ test.after(() => dockerodeMock.restore())
 
 test('cluster summary preserves retained tasks, empty counts, permission and Docker failure semantics', async () => {
     const fastify = Fastify()
+    fastify.setValidatorCompiler(() => () => true)
     fastify.addHook('onRequest', async (request) => {
         ;(request as any).rbac = {assertPermission(permission: string) {
             assert.equal(permission, 'DOCKER_VIEW')

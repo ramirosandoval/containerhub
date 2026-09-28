@@ -422,11 +422,11 @@ async function fetchTaskContainerStats(task: DockerTask) {
 
 export function parseTaskLogTail(rawTail: unknown, maxTail: number = 10000): number {
     if (typeof rawTail === 'string') {
-        const parsed = parseInt(rawTail, 10)
-        if (isNaN(parsed)) throw new Error('Tail must be an integer.')
-        rawTail = parsed
+        if (!/^[+-]?\d+$/.test(rawTail.trim())) throw new Error('Tail must be an integer.')
+        rawTail = Number(rawTail.trim())
     }
     if (typeof rawTail === 'number') {
+        if (!Number.isInteger(rawTail)) throw new Error('Tail must be an integer.')
         if (rawTail <= 0) throw new Error('Tail must be a positive integer.')
         if (rawTail > maxTail) throw new Error(`Tail must be at most ${maxTail}.`)
         return rawTail
@@ -597,7 +597,8 @@ export async function removeNetwork(network: string) {
 export async function getOrCreateNetwork(network: string, stack?: string | null) {
     try {
         return await fetchNetwork(network)
-    } catch {
+    } catch (error) {
+        if (!isDockerNotFound(error)) throw error
         return createNetwork({
             Name: network,
             Driver: 'overlay',

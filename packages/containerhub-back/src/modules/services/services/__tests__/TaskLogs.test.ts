@@ -37,8 +37,25 @@ test('decodes multiplexed log frames split across stream chunks', () => {
     assert.deepEqual(logLines, ['first line', 'second line'])
 })
 
+test('preserves UTF-8 characters split across raw log chunks', () => {
+    const logLines: string[] = []
+    const decoder = createDockerLogLineDecoder(logLine => logLines.push(logLine))
+    const output = Buffer.from('café\n', 'utf8')
+    decoder.push(output.subarray(0, 4))
+    decoder.push(output.subarray(4))
+    decoder.end()
+    assert.deepEqual(logLines, ['café'])
+})
+
 test('accepts bounded positive task log tails', () => {
     assert.equal(parseTaskLogTail('30'), 30)
     assert.throws(() => parseTaskLogTail('0'), /positive integer/)
     assert.throws(() => parseTaskLogTail('10001'), /at most 10000/)
+})
+
+test('rejects malformed or fractional task log tails', () => {
+    assert.throws(() => parseTaskLogTail('12garbage'), /integer/)
+    assert.throws(() => parseTaskLogTail('1.5'), /integer/)
+    assert.throws(() => parseTaskLogTail(1.5), /integer/)
+    assert.throws(() => parseTaskLogTail(Number.NaN), /integer/)
 })

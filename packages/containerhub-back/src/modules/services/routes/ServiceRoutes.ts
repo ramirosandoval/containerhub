@@ -103,15 +103,19 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
         websocket: true
     }, (socket: TaskLogSocket, request: any) => {
         let stopStreaming: (() => void) | undefined
+        let started = false
+        let closed = false
         socket.on('message', async (payload) => {
-            if (stopStreaming) return
+            if (started || closed) return
+            started = true
             try {
                 stopStreaming = await streamTaskLogs(request.params.taskId, await taskLogFilters(payload), (logLine) => socket.send(`${logLine}\n`), () => socket.close())
+                if (closed) stopStreaming()
             } catch {
                 socket.close(1011)
             }
         })
-        socket.once('close', () => stopStreaming?.())
+        socket.once('close', () => { closed = true; stopStreaming?.() })
     })
     fastify.get('/api/docker/tasks/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => fetchTasks(request.params.serviceIdentifier))
     fastify.get('/api/docker/logs/:stackName/:serviceName', protectedRoute(DockerPermissions.Logs), async (request: any) => {

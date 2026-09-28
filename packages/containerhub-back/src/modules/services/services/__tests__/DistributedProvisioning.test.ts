@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
-import {link, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
+import {execFileSync} from 'node:child_process'
+import {constants} from 'node:fs'
+import {link, mkdtemp, open, readFile, rm, symlink, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import test, {mock} from 'node:test'
+import {createHostFile} from '../HostVolumeProvisioning.js'
 
 let useLocalNode = false
 class DockerStub {
@@ -89,6 +92,40 @@ test('legacy docker-devops host paths are provisioned at their configured host-v
             rm(dockerDataRoot, {recursive: true, force: true}),
             rm(hostVolumeRoot, {recursive: true, force: true})
         ])
+    }
+})
+
+test('local provisioning rejects an existing FIFO without waiting for a reader', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'containerhub-local-fifo-'))
+    const fifo = join(root, 'blocked.fifo')
+    execFileSync('mkfifo', [fifo])
+    const previousDockerDataPath = process.env.DOCKER_DATA_PATH
+    const previousHostVolumeRoots = process.env.CONTAINERHUB_HOST_VOLUME_ROOTS
+    process.env.DOCKER_DATA_PATH = root
+    process.env.CONTAINERHUB_HOST_VOLUME_ROOTS = root
+    const pending = createHostFile(root, 'blocked.fifo', 'content')
+    let timer: NodeJS.Timeout | undefined
+    try {
+        const response = await Promise.race([pending.then(() => true), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 1_000) })])
+        assert.notEqual(response, null, 'FIFO request must not wait for a reader')
+        assert.fail('writing to a FIFO must be rejected')
+    } catch (error) {
+        if (error instanceof assert.AssertionError) throw error
+        assert.match(String(error), /ENXIO|regular file/)
+    } finally {
+        if (timer) clearTimeout(timer)
+        const reader = await open(fifo, constants.O_RDONLY | constants.O_NONBLOCK)
+        try {
+            await pending.catch(() => undefined)
+            await assert.rejects(createHostFile(root, 'blocked.fifo', 'content'), /regular file/)
+        } finally {
+            await reader.close()
+            if (previousDockerDataPath === undefined) delete process.env.DOCKER_DATA_PATH
+            else process.env.DOCKER_DATA_PATH = previousDockerDataPath
+            if (previousHostVolumeRoots === undefined) delete process.env.CONTAINERHUB_HOST_VOLUME_ROOTS
+            else process.env.CONTAINERHUB_HOST_VOLUME_ROOTS = previousHostVolumeRoots
+            await rm(root, {recursive: true, force: true})
+        }
     }
 })
 
