@@ -10,13 +10,13 @@ Trazar entrada → lógica propia → efecto/dependencia y contrastar tests. Eva
 
 Cada hallazgo conserva su ID histórico `Bxx-nnn`; el estado de remediación vigente se indica aparte en cada tanda. Separar fuente, tests aislados, integración y UI. Una corrección verificada en el repositorio no prueba compatibilidad de todos los consumidores externos.
 
-`inventory.tsv`: `revisado` acredita lectura de fuente y SHA256, no corrección de hallazgos ni ejecución de tests; `bloqueado` indica contenido parcialmente enmascarado por la vista de lectura. `review_commit` registra una revisión que contiene los bytes del archivo, no necesariamente el último commit del árbol. Un único archivo de transporte GraphQL está bloqueado por redacción automática; su hash sólo acredita identidad de bytes, no lectura completa. No se necesitan credenciales ni autorizaciones para ese límite documental.
+`inventory.tsv`: `revisado` acredita lectura de fuente y SHA256, no corrección de hallazgos ni ejecución de tests; `bloqueado` indica contenido parcialmente enmascarado por la vista de lectura. `review_commit` registra una revisión que contiene los bytes del archivo, no necesariamente el último commit del árbol. `SetupContainerHub.ts` (líneas 22 y 68) y `serviceGraphql.ts` (línea 15) tienen fragmentos enmascarados automáticamente: sus hashes sólo acreditan identidad de bytes, no lectura completa. No se necesitan credenciales ni autorizaciones para ese límite documental.
 
 ## Tandas
 
 | Tanda | Informe | Archivos | Estado |
 |---|---|---:|---|
-| B01 | [batches/B01-back-core.md](batches/B01-back-core.md) | 10 | revisado |
+| B01 | [batches/B01-back-core.md](batches/B01-back-core.md) | 10 | 9 revisados, 1 bloqueado |
 | B02 | [batches/B02-back-services.md](batches/B02-back-services.md) | 17 | revisado |
 | B03 | [batches/B03-back-monitoring.md](batches/B03-back-monitoring.md) | 24 | revisado |
 | B04 | [batches/B04-back-integrations.md](batches/B04-back-integrations.md) | 10 | revisado |
@@ -47,7 +47,7 @@ No ejecutar refactors preventivos de SOLID/POO. Corregir fallos nuevos sólo con
 
 ## Qué está y qué no está verificado
 
-- **Repositorio:** el inventario actual tiene 129 rutas únicas y 129 hashes SHA256 que coinciden con los bytes de trabajo; 128 filas `revisado` y una `bloqueado` por redacción de lectura, no por permisos. Las notas originales documentan el corte de 2026-09-23; cada adenda registra la disposición actual de todos sus IDs. El grafo MCP estaba desactualizado y no se usó como prueba de ausencia.
+- **Repositorio:** el inventario actual tiene 129 rutas únicas y 129 hashes SHA256 que coinciden con los bytes de trabajo; 127 filas `revisado` y dos `bloqueado` por redacción de lectura, no por permisos. Las notas originales documentan el corte de 2026-09-23; cada adenda registra la disposición actual de todos sus IDs. El grafo MCP estaba desactualizado y no se usó como prueba de ausencia.
 - **Pruebas y compilación:** backend **160 aprobadas, 1 omitida, 0 fallidas** tras alinear seis tests con el compilador Fastify de producción; agente **8/8**; frontend **51/51**; chequeos de tipos de los tres workspaces y build frontend pasaron en el entorno de pruebas comunicado. Registry **9/9** y GitLab **7/7** focales forman parte de ese contraste, no se suman a la suite backend.
 - **API/UI/operación:** dos Playwright con API y sesión simuladas prueban interacción acotada, no login real. No se verificaron Registry/GitLab externos, Mongo real, Swarm, worker remoto, bind mounts ni navegación/autorización de un usuario real; `Fastify.inject`, SQLite y dos servidores HTTP locales son evidencia de sus fronteras específicas, no E2E.
 

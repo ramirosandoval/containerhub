@@ -1,6 +1,6 @@
 # B01 — núcleo backend, configuración y seguridad
 
-Estado actual: 10 fuentes inventariadas al 2026-09-28. Las notas de flujo, líneas y resultados de prueba siguientes documentan el **corte histórico** `94910fc7f948bfd0b7801e962e0d1243c3b1a10a`; la actualización de hallazgos al final y `../inventory.tsv` gobiernan el árbol actual.
+Estado actual: 10 fuentes inventariadas al 2026-09-28; nueve leídas por completo y `SetupContainerHub.ts` parcialmente bloqueado por redacción automática de las líneas 22 y 68. Las notas de flujo, líneas y resultados de prueba siguientes documentan el **corte histórico** `94910fc7f948bfd0b7801e962e0d1243c3b1a10a`; la actualización de hallazgos al final y `../inventory.tsv` gobiernan el árbol actual.
 
 ## Flujos y notas por archivo
 
@@ -61,6 +61,6 @@ Estado actual: 10 fuentes inventariadas al 2026-09-28. Las notas de flujo, líne
 |---|---|---|
 | B01-001 | Abierto | `servers/YogaFastifyServer.ts:9-10` conserva el compilador permisivo; el límite declarado en `modules/services/routes/TerminalRoutes.ts` no equivale a validación de producción. No activar AJV globalmente sin contrato Drax. |
 | B01-002 | Condicionado por despliegue | `setup/VaultSecretLoader.ts:23-25,42-51` sigue aceptando URL HTTP; no hay evidencia de que el entorno productivo lo use sobre red insegura. Asegurar transporte en el despliegue, sin afirmar incidente. |
-| B01-003 | Corregido en fuente | `setup/SetupContainerHub.ts:19-27,58-60,162-167` reutiliza `identityPermissions` al sembrar y registrar; no mantiene dos listas independientes de esa familia. |
+| B01-003 | Corregido en estructura; lectura parcial | `setup/SetupContainerHub.ts:19-27,58-60,162-167` reutiliza `identityPermissions` al sembrar y registrar; no mantiene dos listas independientes de esa familia. La vista enmascara fragmentos de las líneas 22 y 68: no se certifica la lista exacta de permisos ni la lectura completa del archivo. |
 
 La suite backend completa posterior al corte inicial pasó con **160 aprobadas, 1 omitida y 0 fallidas** tras alinear seis arneses Fastify con producción; no prueba la seguridad de un Vault externo ni un `taskId` inválido en la factoría real.
