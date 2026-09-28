@@ -13,7 +13,7 @@
                         <td>{{ nodeName(task.nodeId) }}</td>
                         <td>{{ task.id }}</td>
                         <td class="text-center">
-                            <v-btn :aria-label="t('services.tasks.logs')" color="primary" icon="mdi-file-document-outline" size="small" variant="text" @click="emit('logs', task)"/>
+                            <v-btn v-if="allowLogs" :aria-label="t('services.tasks.logs')" color="primary" icon="mdi-file-document-outline" size="small" variant="text" @click="emit('logs', task)"/>
                             <v-btn :aria-label="t('taskInspect.title')" color="primary" icon="mdi-information-outline" size="small" variant="text" @click="emit('inspect', task)"/>
                             <v-btn v-if="task.state === 'running' && task.containerId" :aria-label="t('taskStatistics.title')" color="primary" icon="mdi-chart-line" size="small" variant="text" @click="emit('statistics', task)"/>
                             <v-menu v-if="canOpenTerminal(task)">
@@ -34,10 +34,11 @@ import {formatDateTime} from '@drax/common-front'
 import {useI18n} from 'vue-i18n'
 import type {ServiceTask} from './taskContract'
 
-const {tasks, nodeNames, allowTerminal} = defineProps<{
+const {tasks, nodeNames, allowLogs, allowTerminal} = defineProps<{
     tasks?: ServiceTask[]
     loading: boolean
     nodeNames: Record<string, string>
+    allowLogs: boolean
     allowTerminal: boolean
 }>()
 const emit = defineEmits<{

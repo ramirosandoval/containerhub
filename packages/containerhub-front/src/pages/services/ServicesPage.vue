@@ -95,6 +95,7 @@
                             :tasks="tasks[service(item)?.id ?? '']"
                             :loading="Boolean(taskLoading[service(item)?.id ?? ''])"
                             :node-names="nodeNames"
+                            :allow-logs="authStore.hasPermission('DOCKER_LOGS')"
                             :allow-terminal="authStore.hasPermission('DOCKER_TERMINAL')"
                             @reload="service(item) && reloadTasks(service(item)!)"
                             @logs="task => openLogs(task, service(item)!)"

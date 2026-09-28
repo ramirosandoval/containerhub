@@ -6,6 +6,28 @@ const service = {
     ports: [], createdAt: null, updatedAt: null
 }
 
+test('view-only user sees task inspection but not the logs action', async ({page}) => {
+    const token = [
+        Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
+        Buffer.from(JSON.stringify({exp: 4_102_444_800})).toString('base64url'),
+        'view-only-test'
+    ].join('.')
+    await page.addInitScript(accessToken => localStorage.setItem('AuthStore', JSON.stringify({
+        accessToken, authUser: {username: 'view-only-test', role: {permissions: ['DOCKER_VIEW']}}
+    })), token)
+    await page.route('**/api/**', route => route.abort())
+    await page.route('**/graphql', route => route.fulfill({json: {data: route.request().postDataJSON().query.includes('paginateServices')
+        ? {paginateServices: {items: [service], total: 1, page: 1, limit: 10}}
+        : {fetchService: [service]}}}))
+    await page.route('**/api/docker/version', route => route.fulfill({json: {}}))
+    await page.route('**/api/docker/tasks/service-1', route => route.fulfill({json: [{id: 'task-1', nodeId: 'node-1', state: 'running'}]}))
+    await page.goto('/services')
+    await page.locator('main tbody > tr').first().getByRole('button').click()
+    const taskRow = page.getByRole('columnheader', {name: 'Tarea'}).locator('xpath=ancestor::table[1]').locator('tbody > tr').filter({hasText: 'task-1'})
+    await expect(taskRow.getByRole('button', {name: 'Inspección de tarea'})).toBeVisible()
+    await expect(taskRow.getByRole('button', {name: 'Ver logs'})).toHaveCount(0)
+})
+
 test('expanded service tasks retain actions and fall back to node ID', async ({page}) => {
     const token = [
         Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
