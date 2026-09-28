@@ -1,5 +1,5 @@
 import type {FastifyInstance, FastifyPluginAsync} from 'fastify'
-import {CommonController} from '@drax/common-back'
+import {CommonController, NotFoundError, ZodErrorToValidationError} from '@drax/common-back'
 import {z} from 'zod'
 import {DockerPermissions} from '../permissions/DockerPermissions.js'
 import {requirePermission} from './requirePermission.js'
@@ -59,7 +59,26 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
     fastify.get('/api/docker/service', protectedRoute(DockerPermissions.View), async (request: any) => fetchService(undefined, serviceReadOptions(request)))
     fastify.post('/api/docker/service', protectedRoute(DockerPermissions.Create, {body: z.toJSONSchema(ServiceCreateInputSchema, {target: 'openapi-3.0'})}), async (request: any, reply) => {
         try {
-            return await createService(request.body, serviceMutationContext(request), serviceReadOptions(request))
+            const parsed = await ServiceCreateInputSchema.safeParseAsync(request.body)
+            if (!parsed.success) throw ZodErrorToValidationError(parsed.error, request.body)
+            const input = parsed.data
+            const mutation = serviceMutationContext(request)
+            const options = serviceReadOptions(request)
+            const findExact = async () => (await fetchService()).find(service => service.name === input.name)
+            const existing = await findExact()
+            if (existing) {
+                await requirePermission(request, DockerPermissions.Update)
+                return await updateService(existing.id, input, mutation, options)
+            }
+            try {
+                return await createService(input, mutation, options)
+            } catch (error) {
+                if (typeof error !== 'object' || error === null || !('statusCode' in error) || error.statusCode !== 409) throw error
+                const raced = await findExact()
+                if (!raced) throw error
+                await requirePermission(request, DockerPermissions.Update)
+                return await updateService(raced.id, input, mutation, options)
+            }
         } catch (error) {
             return controller.handleError(error, reply)
         }
@@ -79,7 +98,15 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
     fastify.get('/api/docker/service/:serviceName/stats', protectedRoute(DockerPermissions.View), async (request: any) => fetchServiceStats(request.params.serviceName))
     fastify.get('/api/docker/service/:name/tag', protectedRoute(DockerPermissions.View), async (request: any) => findServiceTag(request.params.name))
     fastify.get('/api/docker/service/status/:image', protectedRoute(DockerPermissions.View), async (request: any) => fetchImageStatus(request.params.image))
-    fastify.get('/api/docker/service/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => findServiceByIdOrName(request.params.serviceIdentifier, serviceReadOptions(request)))
+    fastify.get('/api/docker/service/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => {
+        const identifier: string = request.params.serviceIdentifier
+        try {
+            return await findServiceByIdOrName(identifier, serviceReadOptions(request))
+        } catch (error) {
+            if (!(error instanceof NotFoundError) || /^[a-z0-9]{25}$/.test(identifier)) throw error
+            return null
+        }
+    })
 
     fastify.get<{Params: {taskId: string}}>('/api/docker/task/:taskId/inspect', {
         ...protectedRoute(DockerPermissions.View),
@@ -118,11 +145,15 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
         socket.once('close', () => { closed = true; stopStreaming?.() })
     })
     fastify.get('/api/docker/tasks/:serviceIdentifier', protectedRoute(DockerPermissions.View), async (request: any) => fetchTasks(request.params.serviceIdentifier))
+    fastify.get('/api/docker/logs/config', protectedRoute(DockerPermissions.Logs), async () => ({
+        maxLogsLines: (await SettingsService.getSettings()).maxLogsLines
+    }))
     fastify.get('/api/docker/logs/:stackName/:serviceName', protectedRoute(DockerPermissions.Logs), async (request: any) => {
         // TODO: implement caching strategy for application settings
         const settings = await SettingsService.getSettings()
         const lines = parseTaskLogTail(request.query?.lines ?? 30, settings.maxLogsLines)
-        return fetchLogs(request.params.stackName, request.params.serviceName, lines)
+        return fetchLogs(request.params.stackName, request.params.serviceName, lines,
+            typeof request.query?.search === 'string' ? request.query.search : undefined)
     })
 
     fastify.get('/api/docker/nodes', protectedRoute(DockerPermissions.NodesFetch), async () => fetchNodes())

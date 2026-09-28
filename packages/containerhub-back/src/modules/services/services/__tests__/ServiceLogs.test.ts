@@ -5,6 +5,7 @@ import {PassThrough} from 'node:stream'
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
 import WebSocket from 'ws'
+import {z} from 'zod'
 
 const dockerCalls = {
     taskIds: [] as string[]
@@ -12,6 +13,7 @@ const dockerCalls = {
 let dockerTasks: Array<Record<string, unknown>> = []
 let onStreamRequested: (() => void) | undefined
 let resolveLogStream: ((stream: PassThrough) => void) | undefined
+let logPayload = 'service log\n'
 
 class DockerStub {
     getService() {
@@ -31,16 +33,18 @@ class DockerStub {
         dockerCalls.taskIds.push(taskId)
         return {logs: () => onStreamRequested
             ? new Promise<PassThrough>((resolve) => { resolveLogStream = resolve; onStreamRequested?.() })
-            : Promise.resolve(Buffer.from('service log\n', 'utf8'))}
+            : Promise.resolve(Buffer.from(logPayload, 'utf8'))}
     }
 }
 
 const dockerodeMock = mock.module('dockerode', {defaultExport: DockerStub})
 const settingsMock = mock.module('../../../settings/services/SettingsService.js', {namedExports: {
-    SettingsService: {getSettings: async () => ({maxLogsLines: 10_000})}
+    SettingsService: {getSettings: async () => ({maxLogsLines: 100})},
+    SettingsUpdateSchema: z.object({})
 }})
 const {fetchLogs} = await import('../ServiceService.js')
 const {default: ServiceRoutes} = await import('../../routes/ServiceRoutes.js')
+const {SettingsRoutes} = await import('../../../settings/routes/SettingsRoutes.js')
 
 test.after(() => { dockerodeMock.restore(); settingsMock.restore() })
 
@@ -48,6 +52,7 @@ test.beforeEach(() => {
     dockerCalls.taskIds.length = 0
     onStreamRequested = undefined
     resolveLogStream = undefined
+    logPayload = 'service log\n'
     dockerTasks = [
         {ID: 'task-failed', Status: {State: 'failed'}},
         {ID: 'task-running', Status: {State: 'running'}}
@@ -84,6 +89,7 @@ async function serviceLogServer() {
         }
     })
     await fastify.register(ServiceRoutes)
+    await fastify.register(SettingsRoutes)
     await fastify.ready()
     return fastify
 }
@@ -103,6 +109,45 @@ test('service logs allow an authenticated user with DOCKER_LOGS', async () => {
     } finally {
         await fastify.close()
     }
+})
+
+test('logs users read only the line limit, not global settings, and oversized tails stay rejected', async () => {
+    const fastify = await serviceLogServer()
+    try {
+        const headers = {authorization: 'Bearer logs-user'}
+        const limit = await fastify.inject({url: '/api/docker/logs/config', headers})
+        assert.equal(limit.statusCode, 200)
+        assert.deepEqual(limit.json(), {maxLogsLines: 100})
+        assert.equal((await fastify.inject({url: '/api/settings', headers})).statusCode, 403)
+        assert.notEqual((await fastify.inject({url: '/api/docker/task/task-running/logs?tail=101', headers})).statusCode, 200)
+        assert.deepEqual(dockerCalls.taskIds, [])
+    } finally { await fastify.close() }
+})
+
+test('log limit is denied without DOCKER_LOGS', async () => {
+    const fastify = await serviceLogServer()
+    try {
+        const response = await fastify.inject({url: '/api/docker/logs/config', headers: {authorization: 'Bearer view-user'}})
+        assert.equal(response.statusCode, 403)
+    } finally { await fastify.close() }
+})
+
+test('REST logs search filters case-insensitively without affecting unfiltered or missing task results', async () => {
+    logPayload = 'service log\nanother line\n'
+    const fastify = await serviceLogServer()
+    try {
+        const headers = {authorization: 'Bearer logs-user'}
+        const base = '/api/docker/logs/payments/api?lines=30'
+        const filtered = await fastify.inject({url: `${base}&search=SERV`, headers})
+        assert.equal(filtered.statusCode, 200)
+        assert.deepEqual(filtered.json(), ['service log'])
+        assert.deepEqual((await fastify.inject({url: base, headers})).json(), ['service log', 'another line'])
+        dockerTasks = [{ID: 'task-failed', Status: {State: 'failed'}}]
+        const empty = await fastify.inject({url: `${base}&search=SERV`, headers})
+        assert.equal(empty.statusCode, 200)
+        assert.equal(empty.body, 'null')
+        assert.equal((await fastify.inject({url: `${base}&search=SERV`, headers: {authorization: 'Bearer view-user'}})).statusCode, 403)
+    } finally { await fastify.close() }
 })
 
 test('service logs deny an authenticated user without DOCKER_LOGS', async () => {

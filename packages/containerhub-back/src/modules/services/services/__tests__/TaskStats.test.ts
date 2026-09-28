@@ -2,12 +2,13 @@ import assert from 'node:assert/strict'
 import test, {mock} from 'node:test'
 import Fastify from 'fastify'
 
-const localTask = {ID: 'local-task', NodeID: 'manager', DesiredState: 'running', Status: {ContainerStatus: {ContainerID: 'local-container'}}}
-const workerTask = {ID: 'worker-task', NodeID: 'worker', DesiredState: 'running', Status: {ContainerStatus: {ContainerID: 'worker-container'}}}
+const localTask = {ID: 'local-task', NodeID: 'manager', DesiredState: 'running', Status: {State: 'running', ContainerStatus: {ContainerID: 'local-container'}}}
+const workerTask = {ID: 'worker-task', NodeID: 'worker', DesiredState: 'running', Status: {State: 'running', ContainerStatus: {ContainerID: 'worker-container'}}}
 const unassignedTask = {ID: 'pending-task', DesiredState: 'running', Status: {}}
+const failedTask = {ID: 'failed-task', NodeID: 'manager', DesiredState: 'running', Status: {State: 'failed', ContainerStatus: {ContainerID: 'dead-container'}}}
 const staleTask = {ID: 'stale-task', NodeID: 'manager', DesiredState: 'shutdown', Status: {State: 'shutdown', ContainerStatus: {ContainerID: 'stale-container'}}}
-const localTaskModel = {id: 'local-task', nodeId: 'manager', containerId: 'local-container', serviceId: undefined, state: undefined, message: undefined, createdAt: undefined, updatedAt: undefined}
-const workerTaskModel = {id: 'worker-task', nodeId: 'worker', containerId: 'worker-container', serviceId: undefined, state: undefined, message: undefined, createdAt: undefined, updatedAt: undefined}
+const localTaskModel = {id: 'local-task', nodeId: 'manager', containerId: 'local-container', serviceId: undefined, state: 'running', message: undefined, createdAt: undefined, updatedAt: undefined}
+const workerTaskModel = {id: 'worker-task', nodeId: 'worker', containerId: 'worker-container', serviceId: undefined, state: 'running', message: undefined, createdAt: undefined, updatedAt: undefined}
 const unassignedTaskModel = {id: 'pending-task', nodeId: undefined, containerId: undefined, serviceId: undefined, state: undefined, message: undefined, createdAt: undefined, updatedAt: undefined}
 const sampledStats = {
     cpu_stats: {cpu_usage: {total_usage: 300}, system_cpu_usage: 2000, online_cpus: 4},
@@ -23,13 +24,13 @@ const expectedStats = {...sampledStats, cpu: '80', memoryUsage: '4096', memoryLi
 let workerAvailable = true
 let requestedContainers: string[] = []
 class DockerStub {
-    getTask(taskId: string) { return {inspect: async () => taskId === localTask.ID ? localTask : workerTask} }
+    getTask(taskId: string) { return {inspect: async () => taskId === localTask.ID ? localTask : taskId === unassignedTask.ID ? unassignedTask : workerTask} }
     getService() { return {inspect: async () => ({ID: 'service'})} }
-    listTasks() { return Promise.resolve([localTask, workerTask, unassignedTask, staleTask]) }
+    listTasks() { return Promise.resolve([localTask, workerTask, unassignedTask, failedTask, staleTask]) }
     info() { return Promise.resolve({Swarm: {NodeID: 'manager'}}) }
     getContainer(containerId: string) {
         requestedContainers.push(containerId)
-        if (containerId === 'stale-container') throw new Error('No such container: stale-container')
+        if (containerId === 'dead-container' || containerId === 'stale-container') throw new Error(`No such container: ${containerId}`)
         assert.equal(containerId, 'local-container', 'remote containers must never hit the manager daemon')
         return {stats: async (options: unknown) => {
             assert.deepEqual(options, {stream: false})
@@ -57,12 +58,15 @@ test('task stats select the task node while preserving local daemon access', asy
     assert.deepEqual(requestedContainers, ['local-container'])
 })
 
-test('service stats share task routing and preserve null stats for unassigned tasks', async () => {
-    assert.deepEqual(await fetchServiceStats('service'), [
+test('service stats include only effectively running tasks without querying failed containers', async () => {
+    const samples = await fetchServiceStats('service')
+    assert.deepEqual(samples, [
         {task: localTaskModel, stats: {id: 'local-container', ...expectedStats}, metrics: expectedMetrics},
-        {task: workerTaskModel, stats: {id: 'worker-container', ...expectedStats}, metrics: expectedMetrics},
-        {task: unassignedTaskModel, stats: null, metrics: null}
+        {task: workerTaskModel, stats: {id: 'worker-container', ...expectedStats}, metrics: expectedMetrics}
     ])
+    assert.deepEqual(samples.map(sample => sample.task.id), ['local-task', 'worker-task'])
+    assert.deepEqual(requestedContainers, ['local-container'])
+    assert.deepEqual(await fetchTaskStats('pending-task'), {task: unassignedTaskModel, stats: null, metrics: null})
 })
 
 test('stats endpoint enforces permission and returns 503 rather than local fallback when the worker fails', async () => {
@@ -88,7 +92,7 @@ test('stats endpoint enforces permission and returns 503 rather than local fallb
             assert.equal((await server.inject(servicePath)).statusCode, 403)
             const serviceResponse = await server.inject({url: servicePath, headers: {authorization: 'Bearer stats-reader'}})
             assert.equal(serviceResponse.statusCode, 200)
-            assert.deepEqual(serviceResponse.json().map((sample: {metrics: unknown}) => sample.metrics), [expectedMetrics, expectedMetrics, null])
+            assert.deepEqual(serviceResponse.json().map((sample: {metrics: unknown}) => sample.metrics), [expectedMetrics, expectedMetrics])
         }
         requestedContainers = []
         workerAvailable = false

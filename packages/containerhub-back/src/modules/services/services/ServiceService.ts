@@ -391,7 +391,7 @@ export async function fetchTaskStats(taskId: string) {
 }
 
 export async function fetchServiceStats(serviceIdentifier: string) {
-    const runningTasks = (await fetchRawTasks(serviceIdentifier)).filter(task => getOptionalField(task, 'DesiredState') === 'running')
+    const runningTasks = (await fetchRawTasks(serviceIdentifier)).filter(task => getOptionalField(getRecordField(task, 'Status'), 'State') === 'running')
     return Promise.all(runningTasks.map(taskStatistics))
 }
 
@@ -483,12 +483,13 @@ export async function fetchTaskLogs(taskId: string, tail: number): Promise<strin
     return Buffer.isBuffer(output) ? decodeDockerLogOutput(output) : []
 }
 
-export async function fetchLogs(stackName: string, serviceName: string, lines = 30): Promise<string[] | null> {
+export async function fetchLogs(stackName: string, serviceName: string, lines = 30, search?: string): Promise<string[] | null> {
     const tasks = await fetchTasks(`${stackName}_${serviceName}`)
     const taskId = tasks.find((task) => task.state === 'running')?.id
     if (!taskId) return null
 
-    return fetchTaskLogs(taskId, lines)
+    const logs = await fetchTaskLogs(taskId, lines)
+    return search ? logs.filter(line => line.toLowerCase().includes(search.toLowerCase())) : logs
 }
 
 export async function fetchNodes() {

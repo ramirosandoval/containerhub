@@ -46,6 +46,7 @@ const auditMock = mock.module('@drax/audit-back', {
     }
 })
 const {updateService} = await import('../ServiceService.js')
+const {toServiceSpec} = await import('../ServiceSpec.js')
 
 test.after(() => {
     dockerodeMock.restore()
@@ -99,6 +100,41 @@ test('update service accepts the legacy partial wire shape without changing its 
     assert.deepEqual(taskTemplate.ContainerSpec?.Command, ['/usr/local/bin/start'])
     assert.deepEqual(taskTemplate.Resources, {Reservations: {NanoCPUs: 250_000_000}})
     assert.deepEqual(serviceSpec?.EndpointSpec?.Ports, [{PublishedPort: 5353, TargetPort: 5353, Protocol: 'udp'}])
+})
+
+test('string command is converted to legacy argv for creation and update', async () => {
+    const creationSpec = toServiceSpec({name: 'stack_api', image: 'alpine:3.20', command: 'node server.js'})
+    const creationTemplate = creationSpec.TaskTemplate
+    assert.ok(creationTemplate && 'ContainerSpec' in creationTemplate)
+    assert.deepEqual(creationTemplate.ContainerSpec?.Command, ['node', 'server.js'])
+
+    await updateService('service-1', {command: 'node server.js'}, mutationContext)
+    const updateTemplate = updatedServiceSpecs.at(-1)?.TaskTemplate
+    assert.ok(updateTemplate && 'ContainerSpec' in updateTemplate)
+    assert.deepEqual(updateTemplate.ContainerSpec?.Command, ['node', 'server.js'])
+})
+
+test('explicit command arrays retain their arguments for creation and update', async () => {
+    const creationTemplate = toServiceSpec({name: 'stack_api', image: 'alpine:3.20', command: ['node', 'server.js']}).TaskTemplate
+    assert.ok(creationTemplate && 'ContainerSpec' in creationTemplate)
+    assert.deepEqual(creationTemplate.ContainerSpec?.Command, ['node', 'server.js'])
+
+    await updateService('service-1', {command: ['node', 'server.js']}, mutationContext)
+    const updateTemplate = updatedServiceSpecs.at(-1)?.TaskTemplate
+    assert.ok(updateTemplate && 'ContainerSpec' in updateTemplate)
+    assert.deepEqual(updateTemplate.ContainerSpec?.Command, ['node', 'server.js'])
+})
+
+test('update service preserves the existing command when omitted', async () => {
+    existingCommand = ['node', 'server.js']
+    try {
+        await updateService('service-1', {}, mutationContext)
+        const taskTemplate = updatedServiceSpecs.at(-1)?.TaskTemplate
+        assert.ok(taskTemplate && 'ContainerSpec' in taskTemplate)
+        assert.deepEqual(taskTemplate.ContainerSpec?.Command, ['node', 'server.js'])
+    } finally {
+        existingCommand = undefined
+    }
 })
 
 test('update service clears an existing command when the legacy payload sends null', async () => {

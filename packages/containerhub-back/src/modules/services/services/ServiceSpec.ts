@@ -177,7 +177,7 @@ export function toServiceSpec(input: ServiceInput, previous?: DockerServiceSpec)
             Image: input.image ?? container.Image,
             Command: input.command === null
                 ? undefined
-                : typeof input.command === 'string' ? [input.command] : input.command ?? container.Command,
+                : typeof input.command === 'string' ? input.command.split(' ') : input.command ?? container.Command,
             Env: input.envs ? input.envs.map((env) => `${env.name}=${env.value ?? ''}`) : container.Env,
             Labels: {...(container.Labels ?? {}), ...labelsToObject(input.labels)},
             Mounts: input.volumes ? input.volumes.map(toMountSettings) : container.Mounts,

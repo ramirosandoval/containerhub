@@ -18,6 +18,7 @@ const serviceFixture = {
 }
 
 let inspectError: Error & {statusCode?: number} = Object.assign(new Error('not found'), {statusCode: 404})
+let listedServices = [serviceFixture]
 
 class DockerStub {
     getService() {
@@ -25,7 +26,7 @@ class DockerStub {
     }
 
     listServices() {
-        return Promise.resolve([serviceFixture])
+        return Promise.resolve(listedServices)
     }
 }
 
@@ -58,16 +59,26 @@ async function serviceServer() {
     return fastify
 }
 
-test('missing service returns 404 instead of an internal error', async () => {
+test('missing service name returns null, missing Docker ID remains 404', async () => {
     inspectError = Object.assign(new Error('not found'), {statusCode: 404})
+    listedServices = []
     const fastify = await serviceServer()
     try {
-        const response = await fastify.inject({
-            url: '/api/docker/service/missing-service',
+        for (const name of ['missing-service', 'shortidbutlooksreal']) {
+            const response = await fastify.inject({
+                url: `/api/docker/service/${name}`,
+                headers: {authorization: 'Bearer view-user'}
+            })
+            assert.equal(response.statusCode, 200)
+            assert.equal(response.body, 'null')
+        }
+        const missingId = await fastify.inject({
+            url: '/api/docker/service/abcdefghijklmnopqrstuvwxy',
             headers: {authorization: 'Bearer view-user'}
         })
-        assert.equal(response.statusCode, 404)
+        assert.equal(missingId.statusCode, 404)
     } finally {
+        listedServices = [serviceFixture]
         await fastify.close()
     }
 })
