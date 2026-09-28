@@ -29,6 +29,6 @@ export function projectServiceUsage(services: ServiceImageUsageInput[], registry
     return services.filter((service) => {
         const serviceTarget = serviceRegistryTarget(service.image)
         return serviceTarget.repository === projectTarget.repository
-            && (!projectTarget.registryDomain || !service.image.domain || projectTarget.registryDomain === service.image.domain)
+            && (!projectTarget.registryDomain || projectTarget.registryDomain === service.image.domain)
     })
 }

@@ -19,3 +19,12 @@ test('matches a GitLab registry prefix only against the same registry domain', (
     assert.deepEqual(projectServiceUsage(services, 'registry.example/team/api').map(({id}) => id), ['one', 'two'])
     assert.deepEqual(projectServiceUsage(services, 'other.example/team/api'), [])
 })
+
+test('does not attribute an unqualified image to a named GitLab registry', () => {
+    const unqualifiedImage = {
+        id: 'docker-hub', name: 'api-public', stack: null,
+        image: {domain: null, namespace: 'team', name: 'api', tag: '2.4', fullname: 'team/api:2.4', nameWithTag: 'api:2.4'}
+    }
+    assert.deepEqual(projectServiceUsage([...services, unqualifiedImage], 'registry.example/team/api').map(({id}) => id), ['one', 'two'])
+    assert.deepEqual(projectServiceUsage([...services, unqualifiedImage], 'team/api').map(({id}) => id), ['one', 'two', 'docker-hub'])
+})
