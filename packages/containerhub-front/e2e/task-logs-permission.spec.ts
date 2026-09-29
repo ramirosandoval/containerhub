@@ -16,7 +16,10 @@ async function setupLogsPage(page: Page) {
                 super()
                 this.taskLogSocket = url.includes('/api/docker/task/') && url.includes('/logs/stream')
                 window.setTimeout(() => this.dispatchEvent(new Event('open')), 0)
-                if (this.taskLogSocket) (window as any).logSocketCount = ((window as any).logSocketCount ?? 0) + 1
+                if (this.taskLogSocket) {
+                    ;(window as any).logSocketCount = ((window as any).logSocketCount ?? 0) + 1
+                    ;(window as any).latestLogSocket = this
+                }
             }
             send(message: string) { if (this.taskLogSocket) (window as any).logSocketMessages.push(JSON.parse(message)) }
             close() { this.dispatchEvent(new Event('close')) }
@@ -88,4 +91,36 @@ test('groups filters separately from viewer controls at desktop and mobile width
     await expect(filters).toBeVisible()
     await expect(actions).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
+test('Enter adds one blank line locally only inside the log viewer', async ({page}) => {
+    await openConfiguredLogsPage(page)
+    await expect.poll(() => page.evaluate(() => (window as any).logSocketMessages.length)).toBe(1)
+    const rows = page.locator('.log-terminal .xterm-rows')
+    const visibleLines = () => rows.locator(':scope > div').allTextContents()
+    const emitLog = (text: string) => page.evaluate(value => {
+        (window as any).latestLogSocket.dispatchEvent(new MessageEvent('message', {data: `${value}\n`}))
+    }, text)
+    await emitLog('first log')
+    await expect(rows).toContainText('first log')
+    await page.locator('input[type="number"]').press('Enter')
+    await emitLog('second log')
+    await expect(rows).toContainText('second log')
+    const before = await visibleLines()
+    expect(before.findIndex(line => line.includes('second log')) - before.findIndex(line => line.includes('first log'))).toBe(1)
+    const sentBefore = await page.evaluate(() => (window as any).logSocketMessages.length)
+    await page.locator('.log-terminal .xterm-helper-textarea').press('Enter')
+    await emitLog('third log')
+    await expect(rows).toContainText('third log')
+    const after = await visibleLines()
+    const second = after.findIndex(line => line.includes('second log'))
+    expect(after.findIndex(line => line.includes('third log')) - second).toBe(2)
+    expect(after[second + 1].trim()).toBe('')
+    expect(after.join('')).not.toContain('Separador')
+    expect(await page.evaluate(() => (window as any).logSocketMessages.length)).toBe(sentBefore)
+    await page.getByRole('switch', {name: 'Timestamps'}).click()
+    await expect.poll(() => page.evaluate(() => (window as any).logSocketMessages.length)).toBe(sentBefore + 1)
+    await emitLog('fourth log')
+    await expect(rows).toContainText('fourth log')
+    await expect(rows).not.toContainText('third log')
 })

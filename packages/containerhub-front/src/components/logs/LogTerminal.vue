@@ -1,5 +1,5 @@
 <template>
-    <div ref="terminalElement" class="log-terminal"/>
+    <div ref="terminalElement" class="log-terminal" @keydown.capture="onViewerKeydown"/>
 </template>
 
 <script setup lang="ts">
@@ -34,6 +34,13 @@ onBeforeUnmount(() => {
     fitAddon.dispose()
     terminal.dispose()
 })
+
+function onViewerKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+    event.preventDefault()
+    event.stopPropagation()
+    terminal.write('\r\n')
+}
 
 defineExpose({
     clear: () => terminal.clear(),

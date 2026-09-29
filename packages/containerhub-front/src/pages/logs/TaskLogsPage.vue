@@ -24,6 +24,7 @@
                 <v-divider class="my-3"/>
                 <div role="group" :aria-label="t('taskLogs.viewerActions')" class="d-flex flex-wrap align-center ga-3 mb-3">
                     <v-switch v-model="paused" density="compact" hide-details :label="t('taskLogs.pause')" @update:model-value="togglePause"/>
+                    <span class="text-caption text-medium-emphasis ms-auto">{{ t('taskLogs.separatorHint') }}</span>
                 </div>
                 <v-alert v-if="configurationError" type="error">{{ t('taskLogs.configurationUnavailable') }}</v-alert>
                 <v-progress-linear v-if="connecting" indeterminate/>
