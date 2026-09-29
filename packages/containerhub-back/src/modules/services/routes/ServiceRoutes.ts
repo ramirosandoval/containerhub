@@ -80,6 +80,7 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
                 return await updateService(raced.id, input, mutation, options)
             }
         } catch (error) {
+            if (error && typeof error === 'object' && 'statusCode' in error) throw error
             return controller.handleError(error, reply)
         }
     })
@@ -87,6 +88,7 @@ export const ServiceRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
         try {
             return await updateService(request.params.service, request.body, serviceMutationContext(request), serviceReadOptions(request))
         } catch (error) {
+            if (error && typeof error === 'object' && 'statusCode' in error) throw error
             return controller.handleError(error, reply)
         }
     })

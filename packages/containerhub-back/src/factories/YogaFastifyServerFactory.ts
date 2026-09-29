@@ -110,6 +110,9 @@ export default function YogaFastifyServerFactory() {
     })
     server.fastify.register(multipart)
     server.fastify.register(websocket)
+    server.fastify.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req: any, body: any, done: any) => {
+        done(null, body)
+    })
     server.fastify.addHook('onRequest', ((request: any, _reply: any, done: () => void) => {
         setWebSocketAuthorizationHeader(request)
         promoteBearerApiKey(request.headers)
