@@ -57,6 +57,7 @@
             v-model:page="page"
             v-model="selected"
             v-model:sort-by="sortBy"
+            v-model:expanded="expanded"
             :headers="filteredHeaders"
             :header-props="ServiceCrud.instance.headerProps"
             :items="items"
@@ -146,7 +147,7 @@ import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterBu
 import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
 import {formatDateTime} from '@drax/common-front'
-import {onMounted, ref} from 'vue'
+import {onMounted, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useAuthStore} from '@drax/identity-vue'
@@ -171,6 +172,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const {prepareFilters, filters, applyFilters, clearFilters, doPaginate, items, itemsPerPage, loading, page, search, sortBy, totalItems, isDynamicFiltersEnable} = useCrud(ServiceCrud.instance)
 const {filteredHeaders} = useCrudColumns(ServiceCrud.instance)
+const expanded = ref<any[]>([])
 const tasks = ref<Record<string, ServiceTask[]>>({})
 const taskLoading = ref<Record<string, boolean>>({})
 const nodeNames = ref<Record<string, string>>({})
@@ -181,12 +183,30 @@ const restartResults = ref<ServiceRestartViewResult[]>([])
 const removeDialog = ref(false)
 const removing = ref(false)
 const removeResults = ref<ServiceRemoveViewResult[]>([])
-useCrudStore(ServiceCrud.instance.name).$patch({search: '', dynamicFilters: []})
+const crudStore = useCrudStore(ServiceCrud.instance.name)
+crudStore.$patch({search: '', dynamicFilters: []})
 prepareFilters()
 const hasInitialFilters = applyInitialFilter('stack', route.query.stack) || applyInitialFilter('image', route.query.image)
 onMounted(async () => {
     await ServiceCrud.instance.loadFilterOptions()
     if (hasInitialFilters) await applyFilters()
+})
+
+watch(items, (currentItems) => {
+    const hasActiveFilter = Boolean(search.value.trim())
+        || filters.value.some(({operator, value}: any) => operator === 'range'
+            ? Boolean(value?.from || value?.to)
+            : value !== null && value !== undefined && value !== '')
+        || crudStore.dynamicFilters.some(({name, operator, value}: any) => Boolean(name)
+            && (operator === 'empty' || (value !== null && value !== undefined && value !== '')))
+    if (currentItems.length !== 1 || !hasActiveFilter) return
+
+    const onlyService = service(currentItems[0])
+    if (!onlyService) return
+    expanded.value = [onlyService]
+    if (!tasks.value[onlyService.id] && !taskLoading.value[onlyService.id]) {
+        void reloadTasks(onlyService).catch(error => console.error('Error loading service tasks', error))
+    }
 })
 
 function applyInitialFilter(field: string, value: unknown): boolean {
@@ -201,7 +221,7 @@ async function toggleTasks(item: unknown, internalItem: unknown, isExpanded: (it
     const expandedService = service(item)
     const willExpand = !isExpanded(internalItem)
     toggleExpand(internalItem)
-    if (willExpand && expandedService && !tasks.value[expandedService.id]) await reloadTasks(expandedService)
+    if (willExpand && expandedService && !tasks.value[expandedService.id] && !taskLoading.value[expandedService.id]) await reloadTasks(expandedService)
 }
 
 async function reloadTasks(currentService: Service): Promise<void> {
