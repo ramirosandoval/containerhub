@@ -4,24 +4,17 @@
             <v-card-title>{{ t('taskLogs.title') }}</v-card-title>
             <v-card-subtitle>{{ serviceName }} · {{ taskId }}</v-card-subtitle>
             <v-card-text>
-                <v-row dense role="group" :aria-label="t('taskLogs.filters')">
-                    <v-col cols="12" md="3">
+                <div role="group" :aria-label="t('taskLogs.filters')" class="logs-controls mb-4">
+                    <div class="logs-primary-filters">
                         <v-select v-model="since" density="compact" hide-details="auto" :items="sinceOptions" :label="t('taskLogs.since')" @update:model-value="reconnect"/>
-                    </v-col>
-                    <v-col cols="12" md="4">
                         <v-combobox v-model="include" chips clearable multiple density="compact" hide-details="auto" :label="t('taskLogs.include')" @update:model-value="reconnect"/>
-                    </v-col>
-                    <v-col cols="12" md="5">
                         <v-combobox v-model="exclude" chips clearable multiple density="compact" hide-details="auto" :label="t('taskLogs.exclude')" @update:model-value="reconnect"/>
-                    </v-col>
-                    <v-col cols="12" sm="3" md="2">
-                        <v-text-field v-model.number="tail" density="compact" hide-details="auto" min="1" :max="maxLogsLines" type="number" :label="t('taskLogs.lines')" @change="reconnect"/>
-                    </v-col>
-                </v-row>
-                <div role="group" :aria-label="t('taskLogs.viewerActions')" class="d-flex flex-wrap align-center justify-end ga-3 mb-3">
-                    <v-switch v-model="timestamps" density="compact" hide-details :label="t('taskLogs.timestamps')" @update:model-value="reconnect"/>
-                    <v-switch v-model="paused" density="compact" hide-details :label="t('taskLogs.pause')" @update:model-value="togglePause"/>
-                    <span class="text-caption text-medium-emphasis">{{ t('taskLogs.separatorHint') }}</span>
+                    </div>
+                    <v-text-field v-model.number="tail" class="logs-tail" density="compact" hide-details="auto" min="1" :max="maxLogsLines" type="number" :label="t('taskLogs.lines')" @change="reconnect"/>
+                    <div role="group" :aria-label="t('taskLogs.viewerActions')" class="logs-actions d-flex align-center ga-4">
+                        <v-switch v-model="timestamps" color="primary" density="compact" hide-details :label="t('taskLogs.timestamps')" @update:model-value="reconnect"/>
+                        <v-switch v-model="paused" color="primary" density="compact" hide-details :label="t('taskLogs.pause')" @update:model-value="togglePause"/>
+                    </div>
                 </div>
                 <v-alert v-if="configurationError" type="error">{{ t('taskLogs.configurationUnavailable') }}</v-alert>
                 <v-progress-linear v-if="connecting" indeterminate/>
@@ -126,3 +119,47 @@ onMounted(async () => {
 })
 onBeforeUnmount(closeSocket)
 </script>
+
+<style scoped>
+.logs-controls {
+    display: grid;
+    grid-template-columns: minmax(170px, 1fr) auto;
+    gap: 16px 12px;
+    align-items: end;
+}
+
+.logs-primary-filters {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 3fr 4fr 5fr;
+    gap: 12px;
+}
+
+.logs-tail {
+    max-width: 170px;
+}
+
+.logs-actions {
+    justify-self: end;
+}
+
+@media (max-width: 800px) {
+    .logs-primary-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 500px) {
+    .logs-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .logs-primary-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .logs-actions {
+        justify-self: start;
+    }
+}
+</style>
