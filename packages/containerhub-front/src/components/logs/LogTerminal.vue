@@ -18,6 +18,14 @@ let resizeObserver: ResizeObserver | undefined
 
 terminal.loadAddon(fitAddon)
 terminal.loadAddon(searchAddon)
+terminal.attachCustomKeyEventHandler((event) => {
+    if (terminal.hasSelection() && event.ctrlKey && event.key.toLowerCase() === 'c') {
+        void navigator.clipboard.writeText(terminal.getSelection())
+        terminal.clearSelection()
+        return false
+    }
+    return true
+})
 
 onMounted(() => {
     if (!terminalElement.value) return
