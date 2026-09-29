@@ -4,13 +4,27 @@
             <v-card-title>{{ t('taskLogs.title') }}</v-card-title>
             <v-card-subtitle>{{ serviceName }} · {{ taskId }}</v-card-subtitle>
             <v-card-text>
-                <v-row dense>
-                    <v-col cols="12" md="3"><v-select v-model="since" :items="sinceOptions" :label="t('taskLogs.since')" @update:model-value="reconnect"/></v-col>
-                    <v-col cols="12" md="3"><v-combobox v-model="include" chips clearable multiple :label="t('taskLogs.include')" @update:model-value="reconnect"/></v-col>
-                    <v-col cols="12" md="3"><v-combobox v-model="exclude" chips clearable multiple :label="t('taskLogs.exclude')" @update:model-value="reconnect"/></v-col>
-                    <v-col cols="12" md="1"><v-text-field v-model.number="tail" min="1" :max="maxLogsLines" type="number" :label="t('taskLogs.lines')" @change="reconnect"/></v-col>
-                    <v-col class="d-flex align-center" cols="12" md="2"><v-switch v-model="timestamps" :label="t('taskLogs.timestamps')" @update:model-value="reconnect"/><v-switch v-model="paused" :label="t('taskLogs.pause')" @update:model-value="togglePause"/></v-col>
+                <v-row dense role="group" :aria-label="t('taskLogs.filters')">
+                    <v-col cols="12" sm="6" md="4">
+                        <v-select v-model="since" density="compact" hide-details="auto" :items="sinceOptions" :label="t('taskLogs.since')" @update:model-value="reconnect"/>
+                    </v-col>
+                    <v-col cols="12" sm="6" md="3">
+                        <v-text-field v-model.number="tail" density="compact" hide-details="auto" min="1" :max="maxLogsLines" type="number" :label="t('taskLogs.lines')" @change="reconnect"/>
+                    </v-col>
+                    <v-col cols="12" md="5" class="d-flex align-center">
+                        <v-switch v-model="timestamps" density="compact" hide-details :label="t('taskLogs.timestamps')" @update:model-value="reconnect"/>
+                    </v-col>
+                    <v-col cols="12" sm="6" md="6">
+                        <v-combobox v-model="include" chips clearable multiple density="compact" hide-details="auto" :label="t('taskLogs.include')" @update:model-value="reconnect"/>
+                    </v-col>
+                    <v-col cols="12" sm="6" md="6">
+                        <v-combobox v-model="exclude" chips clearable multiple density="compact" hide-details="auto" :label="t('taskLogs.exclude')" @update:model-value="reconnect"/>
+                    </v-col>
                 </v-row>
+                <v-divider class="my-3"/>
+                <div role="group" :aria-label="t('taskLogs.viewerActions')" class="d-flex flex-wrap align-center ga-3 mb-3">
+                    <v-switch v-model="paused" density="compact" hide-details :label="t('taskLogs.pause')" @update:model-value="togglePause"/>
+                </div>
                 <v-alert v-if="configurationError" type="error">{{ t('taskLogs.configurationUnavailable') }}</v-alert>
                 <v-progress-linear v-if="connecting" indeterminate/>
                 <log-terminal ref="logTerminal" :scrollback="tail"/>

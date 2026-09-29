@@ -1,6 +1,6 @@
-import {expect, test} from '@playwright/test'
+import {expect, test, type Page} from '@playwright/test'
 
-async function setupLogsPage(page: import('@playwright/test').Page) {
+async function setupLogsPage(page: Page) {
     const token = [
         Buffer.from(JSON.stringify({alg: 'none'})).toString('base64url'),
         Buffer.from(JSON.stringify({exp: 4_102_444_800})).toString('base64url'),
@@ -28,6 +28,13 @@ async function setupLogsPage(page: import('@playwright/test').Page) {
     let settingsRequests = 0
     await page.route('**/api/settings', route => { settingsRequests++; return route.abort() })
     return {settingsRequests: () => settingsRequests}
+}
+
+async function openConfiguredLogsPage(page: Page): Promise<void> {
+    await setupLogsPage(page)
+    await page.route('**/api/docker/logs/config', route => route.fulfill({json: {maxLogsLines: 100}}))
+    await page.goto('/logs/task-1')
+    await expect(page.locator('.log-terminal .xterm')).toBeVisible()
 }
 
 test('logs-only operator uses the permitted line limit without reading settings', async ({page}) => {
@@ -59,4 +66,26 @@ test('configuration failure displays an error and never starts a log socket', as
     await expect(page.getByText('No se pudo cargar la configuración de logs.')).toBeVisible()
     expect(await page.evaluate(() => (window as any).logSocketCount ?? 0)).toBe(0)
     expect(settingsRequests()).toBe(0)
+})
+
+test('groups filters separately from viewer controls at desktop and mobile widths', async ({page}) => {
+    await openConfiguredLogsPage(page)
+    const filters = page.getByRole('group', {name: 'Filtros de logs'})
+    const actions = page.getByRole('group', {name: 'Acciones del visor'})
+    await expect(filters.getByRole('combobox', {name: 'Desde'})).toBeVisible()
+    await expect(filters.getByRole('combobox', {name: 'Incluir'})).toBeVisible()
+    await expect(filters.getByRole('combobox', {name: 'Excluir'})).toBeVisible()
+    await expect(filters.locator('input[type="number"]')).toBeVisible()
+    await expect(filters.getByRole('switch', {name: 'Timestamps'})).toBeVisible()
+    await expect(actions.getByRole('switch', {name: 'Pausar'})).toBeVisible()
+    const desktopFilters = await filters.boundingBox()
+    const desktopActions = await actions.boundingBox()
+    const desktopViewer = await page.locator('.log-terminal').boundingBox()
+    expect(desktopFilters && desktopActions && desktopViewer).toBeTruthy()
+    expect(desktopFilters!.y + desktopFilters!.height).toBeLessThan(desktopActions!.y)
+    expect(desktopActions!.y + desktopActions!.height).toBeLessThan(desktopViewer!.y)
+    await page.setViewportSize({width: 390, height: 844})
+    await expect(filters).toBeVisible()
+    await expect(actions).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
