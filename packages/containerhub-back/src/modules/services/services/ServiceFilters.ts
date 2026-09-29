@@ -104,7 +104,11 @@ export function matchesServiceFilters(service: ServiceModel, filters: ServiceFil
         const expected = expectedValues[0]
         if (filter.operator === 'eq') return equalFilterValue(actual, expected)
         if (filter.operator === 'ne') return !equalFilterValue(actual, expected)
-        if (filter.operator === 'like') return String(actual ?? '').toLowerCase().includes(String(expected).toLowerCase())
+        if (filter.operator === 'like') {
+            const needle = String(expected).toLowerCase()
+            return [actual, ...(filter.field === 'image' ? [service.image.fullname] : [])]
+                .some((value) => String(value ?? '').toLowerCase().includes(needle))
+        }
 
         const comparison = compareFilterValue(actual, expected, filter.field)
         if (Number.isNaN(comparison)) return false

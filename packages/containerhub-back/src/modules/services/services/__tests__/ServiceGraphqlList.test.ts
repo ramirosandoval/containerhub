@@ -93,3 +93,32 @@ test('returns an empty page without invented services', async () => {
         assert.deepEqual(response.data?.paginateServices, {page: 1, limit: 10, total: 0, items: []})
     } finally { fixtures = previousFixtures }
 })
+
+test('image like accepts short and registry-qualified references', async () => {
+    const previousFixtures = fixtures
+    fixtures = [
+        {ID: 's-primary', Spec: {Name: 'team_api', Labels: {'com.docker.stack.namespace': 'team'}, TaskTemplate: {ContainerSpec: {Image: 'registry.example/team/api:2.4'}}}},
+        {ID: 's-other', Spec: {Name: 'other_api', Labels: {'com.docker.stack.namespace': 'team'}, TaskTemplate: {ContainerSpec: {Image: 'other.example/team/api:2.4'}}}},
+        {ID: 's-old', Spec: {Name: 'team_old', Labels: {'com.docker.stack.namespace': 'team'}, TaskTemplate: {ContainerSpec: {Image: 'registry.example/team/api:1.0'}}}},
+    ]
+    try {
+        for (const [reference, expectedNames] of [
+            ['api:2.4', ['other_api', 'team_api']],
+            ['registry.example/team/api:2.4', ['team_api']],
+            ['registry.example/team/api:missing', []],
+        ] as const) {
+            const response = await graphql(true, optionsQuery, {
+                page: 1, limit: 10,
+                filters: JSON.stringify([{field: 'image', operator: 'like', value: reference}]),
+            })
+            assert.equal(response.errors, undefined)
+            assert.equal(response.data?.paginateServices.total, expectedNames.length)
+            assert.deepEqual(
+                response.data?.paginateServices.items.map((service: {name: string}) => service.name).sort(),
+                [...expectedNames].sort(),
+            )
+        }
+    } finally {
+        fixtures = previousFixtures
+    }
+})

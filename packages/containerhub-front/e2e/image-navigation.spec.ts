@@ -57,6 +57,17 @@ test('opens the deployed service image in Registry with its tag and manifest det
     await expect(page.getByText('sha256:abc', {exact: true})).toBeVisible()
     await expect(page.getByText('2.4', {exact: true}).first()).toBeVisible()
     await expect(page.getByText('team_api', {exact: true})).toBeVisible()
+
+    const filteredRequest = page.waitForRequest((request) => {
+        if (!request.url().endsWith('/graphql')) return false
+        const body = request.postDataJSON() as {query: string; variables?: {filters?: string}}
+        if (!body.query.includes('paginateServices')) return false
+        const filters = JSON.parse(body.variables?.filters ?? '[]') as Array<{field: string; value: string}>
+        return filters.some(({field, value}) => field === 'image' && value === 'registry.example/team/api:2.4')
+    })
+    await page.getByRole('link', {name: /Ver servicios|View services/i}).click()
+    await filteredRequest
+    await expect.poll(() => new URL(page.url()).searchParams.get('image')).toBe('registry.example/team/api:2.4')
 })
 
 test('task summary text can be selected and copied without activating its links', async ({page, context}) => {
