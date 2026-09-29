@@ -2,31 +2,34 @@
 
 Este documento detalla el ciclo de vida de empaquetado, distribución y despliegue del proyecto en entornos productivos mediante Docker Swarm.
 
-## 1. Construcción de Imágenes (Build)
+## 1. Construcción de imágenes
 
-El repositorio publica dos imágenes: `containerhub` y `containerhub-agent`. La imagen `containerhub` se reutiliza en dos servicios Swarm independientes: la aplicación y el recolector de monitorización; ambos usan el mismo tag inmutable.
-Para compilar las imágenes localmente, asegúrate de situarte en la raíz del monorepo:
-
-```bash
-# Construir la imagen del Backend y Frontend (ContainerHub Principal)
-docker build -t mi-registry.com/containerhub:latest -f Dockerfile .
-
-# Construir la imagen del Agente (Worker Node)
-docker build -t mi-registry.com/containerhub-agent:latest -f packages/containerhub-agent/Dockerfile .
-```
-
-## 2. Distribución al Registry (Push)
-
-Si deseas desplegar en un clúster multinodo, las imágenes deben residir en un registry accesible por todos los nodos del Swarm.
+Desde la raíz del monorepo, elige referencias versionadas para **las dos**
+imágenes. La aplicación (backend y SPA) y monitoring reutilizan la misma imagen;
+el agente tiene la suya. Reemplaza `REGISTRY` y `VERSION` por valores reales
+del entorno; no reutilices `latest` como identificador de una versión.
 
 ```bash
-# Etiquetar (tag) adecuadamente si no se hizo en el paso previo
-docker tag containerhub:latest mi-registry.com/containerhub:latest
-
-# Empujar imágenes al Registry
-docker push mi-registry.com/containerhub:latest
-docker push mi-registry.com/containerhub-agent:latest
+export CONTAINERHUB_IMAGE=REGISTRY/containerhub:VERSION
+export CONTAINERHUB_AGENT_IMAGE=REGISTRY/containerhub-agent:VERSION
+docker build --target application -t "$CONTAINERHUB_IMAGE" .
+docker build -f packages/containerhub-agent/Dockerfile -t "$CONTAINERHUB_AGENT_IMAGE" .
 ```
+
+## 2. Distribución de imágenes
+
+`docker stack deploy` no construye la imagen: [Docker muestra que ignora
+`build`](https://docs.docker.com/engine/swarm/stack-deploy/#deploy-the-stack-to-the-swarm).
+Para un Swarm multinodo, publica ambas imágenes en un registry accesible desde
+manager y workers (o cárgalas explícitamente en **cada** nodo elegible):
+
+```bash
+docker push "$CONTAINERHUB_IMAGE"
+docker push "$CONTAINERHUB_AGENT_IMAGE"
+```
+
+Si el registry es privado, autentica los nodos y usa
+`docker stack deploy --with-registry-auth` en el paso de despliegue.
 
 ## 3. Despliegue manual en Docker Swarm
 
@@ -34,9 +37,9 @@ El stack de ejemplo no es requisito operativo: los tres servicios se pueden desp
 
 | Servicio | Proceso y placement | Puertos y mounts |
 | --- | --- | --- |
-| `containerhub_app` | `node packages/containerhub-back/dist/index.js` en un manager | publica la API; monta Docker socket, datos y los roots que docker-devops aprovisiona |
-| `containerhub_agent` | `node packages/containerhub-agent/dist/index.js` global en workers | no publica puerto; monta Docker socket, datos y exactamente los mismos roots de host |
-| `containerhub_monitoring` | `containerhub-monitoring` desde la misma imagen/tag de `containerhub`, en un manager | no publica puerto; no necesita roots de provisioning |
+| `containerhub` | `node packages/containerhub-back/dist/index.js` en un manager | publica la API; monta Docker socket, datos y los roots que docker-devops aprovisiona |
+| `containerhub-agent` | `node packages/containerhub-agent/dist/index.js` global en workers | no publica puerto; monta Docker socket, datos y exactamente los mismos roots de host |
+| `containerhub-monitoring` | `containerhub-monitoring` desde la misma imagen/tag de `containerhub`, en un manager | no publica puerto; no necesita roots de provisioning |
 
 En Docker DevOps, deja vacío `Comando` para la aplicación y configura
 `containerhub-monitoring` como `Comando` del servicio de monitoring. Es un
@@ -56,23 +59,61 @@ Docker DevOps limita inicialmente la creación de **archivos** a `/storage`; los
 
 Los roots deben ser escribibles solo por el principal que ejecuta ContainerHub/agent; no uses un host path modificable por usuarios o procesos no confiables.
 
-El nombre y el nodo de `containerhub_monitoring` son decisiones de `docker service create`/`update`; el worker no escucha un puerto ni lee esos valores como settings de aplicación.
+**No exportes `CONTAINERHUB_STORAGE_ROOT=/storage` para el stack estándar.**
+Dejarla sin definir produce `/storage,/logs,/localdata` tanto en el allowlist
+de la aplicación como en el del agente. Definirla con `/storage` mantiene los
+tres mounts, pero reduce el allowlist de la aplicación a `/storage` mientras
+el agente conserva los tres. Si cambias los roots, verifica ambos allowlists
+y los mounts en la configuración interpolada antes de desplegar.
 
-## 4. Despliegue por stack de ejemplo (Local/Producción)
+## 4. Despliegue por stack (local/producción)
 
 El archivo `docker-compose.yml` (stack) provisto en la raíz del proyecto está preparado para el entorno Swarm. Utiliza restricciones de ubicación (`node.role == manager` para el backend y `node.role == worker` en modo global para los agentes).
 
-Para desplegar un candidato paralelo en el puerto 9998 y conservar la opción de reemplazar después el endpoint legacy en 9999:
+Antes de desplegar, selecciona explícitamente la base y la red Mongo del
+entorno. El stack **no** crea Mongo ni esa red: por defecto usa la base
+`containerhub` en `mongodb://mongo:27017/containerhub` y la red externa
+`dockerway_default`. Docker Fortes usa `incartainer`; compartir el servidor
+Mongo no demuestra que ambos esquemas de usuarios sean compatibles. No
+apuntes a `incartainer` sin verificar esa compatibilidad y sus datos.
+
+Para un stack **dedicado** que conviva en el puerto 9998 (Fortes usa 9999),
+además de las dos variables de imagen del paso 1, sustituye estos ejemplos por
+las direcciones, base y red reales:
 
 ```bash
 export CONTAINERHUB_PORT=9998
 export CONTAINERHUB_ORIGIN=https://containerhub-dev.example.com
-export CONTAINERHUB_IMAGE=REGISTRY/containerhub:TAG_INMUTABLE
-export CONTAINERHUB_AGENT_IMAGE=REGISTRY/containerhub-agent:TAG_INMUTABLE
+export CONTAINERHUB_MONGO_URI=mongodb://mongo:27017/containerhub
+export CONTAINERHUB_MONGO_NETWORK=dockerway_default
 export CONTAINERHUB_VAULT_URL=https://vault.example.com
 ```
 
-`CONTAINERHUB_PORT` controla el listener, el target y el published port. Termina TLS en el reverse proxy/ingress y configura `CONTAINERHUB_ORIGIN` con la URL HTTPS que usarán los navegadores y Docker DevOps. No envíes la API key ni la configuración revelada por HTTP sobre una red compartida. El acceso HTTP directo se limita a loopback o a una red privada explícitamente aislada durante pruebas desechables. App y agentes deben usar imágenes ya distribuidas o accesibles desde todos los nodos del Swarm.
+`CONTAINERHUB_PORT` controla el listener, el target y el published port.
+`CONTAINERHUB_ORIGIN` debe ser el origen exacto que abrirá el navegador; el
+valor por defecto del stack es `http://localhost:9998`, no la URL pública.
+Termina TLS en el reverse proxy/ingress para accesos fuera de una red de
+prueba aislada. El puerto de la aplicación se publica en modo `host` en el
+manager; limita el acceso directo con la red/firewall del entorno. No envíes
+API keys ni configuración sensible por HTTP en redes compartidas. Vault debe
+ser alcanzable desde las tareas: `localhost` dentro del contenedor no es el
+manager. App y agente deben usar imágenes accesibles desde sus nodos.
+
+Antes de desplegar, verifica en el manager sin imprimir secretos ni toda la
+configuración interpolada:
+
+```bash
+docker network inspect "$CONTAINERHUB_MONGO_NETWORK" --format '{{.Name}}'
+docker secret inspect containerhub-vault-client-key --format '{{.Spec.Name}}'
+docker node ls
+docker stack config -c docker-compose.yml >/dev/null
+```
+
+Comprueba también que `/storage`, `/logs` y `/localdata` existen y tienen la
+propiedad requerida en **cada** manager/worker elegible. `docker stack config`
+valida la interpolación, pero no comprueba que las imágenes, Vault, Mongo o los
+mounts funcionen en los nodos. Si hay workers `Down`, la tarea global del agente
+no estará ejecutándose allí.
 
 El bootstrap está deshabilitado por defecto. Para habilitarlo, define explícitamente `CONTAINERHUB_BOOTSTRAP_ENABLED=true`, el identificador del secreto en Vault y los cuatro campos de identidad. `CONTAINERHUB_BOOTSTRAP_USERNAME` debe contener solo letras y números; el stack no tiene username por defecto.
 
@@ -114,7 +155,7 @@ Son tres objetos distintos:
 Al arrancar, ContainerHub usa el Docker secret para identificarse ante Vault,
 solicita el identificador indicado por la variable de entorno y guarda el
 **valor devuelto** en `CONTAINERHUB_BOOTSTRAP_PASSWORD` dentro de su proceso.
-Luego crea el usuario `Admin` en la base `containerhub` **solo si ese username
+Luego crea el usuario `Admin` en la base seleccionada **solo si ese username
 no existe**. El usuario `root` de Vault es independiente del usuario `root`
 de ContainerHub: no se copia su contraseña. La contraseña elegida puede ser la
 anterior de ContainerHub, siempre que cumpla la política de contraseñas de Drax;
@@ -206,16 +247,25 @@ el login, exporta `CONTAINERHUB_BOOTSTRAP_ENABLED=false`, ejecuta
 mismo stack dedicado. Exportar variables en una shell **sin** redesplegar no
 cambia un servicio ya existente; el cambio dirigido anterior sí lo hace.
 
-### Ejecución del Despliegue
+### Ejecución del despliegue
 
-Inicia el despliegue del stack llamado `containerhub`:
+Desde el manager, despliega **un stack dedicado**, no el stack compartido
+`dockerway`: esta definición parcial no incluye sus demás servicios. Usa las
+variables exportadas en los pasos anteriores:
 
 ```bash
 docker stack deploy -c docker-compose.yml containerhub
+docker stack services containerhub
+docker service ps containerhub_containerhub-agent
 ```
 
-> [!TIP]
-> Puedes verificar `app`, `monitoring` y `agent` con `docker stack services containerhub`. Para el recolector separado, usa `docker service logs -f containerhub_monitoring`; no publica un puerto ni reemplaza el agente remoto.
+Si el registry requiere credenciales, añade `--with-registry-auth` a
+`docker stack deploy`. Deben correr la aplicación y monitoring en el manager
+y una tarea del agente por cada worker Linux `Ready`. Abre
+`$CONTAINERHUB_ORIGIN`, inicia sesión con un usuario existente o con el
+bootstrap explícito y verifica Nodes. Para probar el camino remoto, hace
+falta una tarea real en un worker distinto: no basta con `docker stack config`
+ni con que la tarea del manager esté `Running`.
 
 ### Integración con Docker DevOps
 
@@ -231,6 +281,16 @@ docker stack deploy -c docker-compose.yml containerhub
 
 ## 5. Transporte interno backend-agent
 
-El stack de compatibilidad usa HTTP/WS sin mTLS entre el backend y el agente para mantener la topología aceptada de Docker Fortes y evitar infraestructura adicional en esta sustitución. Es un riesgo aceptado para este alcance, no una garantía de transporte seguro.
+El stack de compatibilidad usa HTTP/WS sin mTLS entre el backend y el agente
+para mantener la topología aceptada de Docker Fortes y evitar infraestructura
+adicional en esta sustitución. Es un riesgo aceptado para este alcance, no una
+garantía de autenticación o cifrado del canal. [Docker documenta que los datos
+de aplicación en overlay no se cifran por defecto](https://docs.docker.com/engine/swarm/networking/#encryption).
 
-El puerto 9997 del agente debe permanecer únicamente en la red overlay privada: no lo publiques en el host ni lo expongas fuera del Swarm. App y agente deben compartir esa overlay y los mismos roots/bind mounts. Si más adelante se exige autenticación fuerte del agente, trátala como un proyecto de infraestructura separado con identidad de workload y despliegue coordinado en todos los nodos.
+El puerto 9997 del agente debe permanecer únicamente en la red overlay
+privada: no lo publiques en el host ni lo expongas fuera del Swarm. App y
+agente deben compartir esa overlay y los mismos roots/bind mounts. No ejecutes
+`deploy-remote-worker-proof.sh init` como paso del stack normal: prepara
+certificados para un despliegue mTLS **distinto**. Si más adelante se exige
+autenticación fuerte del agente, trátala como un proyecto de infraestructura
+separado con identidad de workload y despliegue coordinado en todos los nodos.

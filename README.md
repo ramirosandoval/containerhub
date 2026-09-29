@@ -8,13 +8,14 @@ Docker Swarm management panel. Replaces the legacy `docker-fortes` panel
 
 ```
 packages/
-  containerhub-agent/   Per-node Docker health process with mandatory mTLS
+  containerhub-agent/   Per-worker Docker agent (HTTP/WS on the default private overlay)
   containerhub-back/    Fastify + graphql-yoga + Mongoose + Drax identity
   containerhub-front/   Vite + Vue 3 + Vuetify 3 + Apollo Client 3
 ```
 
-The backend shares Mongo with the legacy app. Coexistence: legacy on
-port 9999, containerhub on 9998, Mongo DB `incartainer`.
+The Swarm stack defaults to Mongo DB `containerhub`; the legacy app uses
+`incartainer`. They can run side by side on ports 9998 and 9999, respectively,
+but sharing a Mongo server does not by itself establish shared-user login.
 
 ## First run
 
@@ -26,138 +27,23 @@ npm run dev:back       # http://localhost:9998
 npm run dev:front      # http://localhost:5173
 ```
 
-## Docker Swarm local test
+## Docker Swarm
 
-The root [`Dockerfile`](Dockerfile) builds the backend and frontend, then
-packages both in one `containerhub` image. The Node.js backend serves the
-compiled SPA from `/app/public`; there is no separate frontend container.
-The agent remains a separate image because Swarm runs one agent task on each
-Linux worker so it can access that node's Docker socket.
+The root [`Dockerfile`](Dockerfile) packages the backend and compiled SPA in
+one image, reused by the application and monitoring services. The worker agent
+has its own image. [`docker-compose.yml`](docker-compose.yml) defines all three
+services for `docker stack deploy` (not `docker compose up`): application and
+monitoring on a manager, one agent on each Linux worker, Mongo as the configured
+database, and an external Docker secret for Vault access. The default agent
+transport is HTTP/WS on a private overlay; **mTLS is not required or enabled**.
 
-[`docker-compose.yml`](docker-compose.yml) is the Swarm stack definition used
-by `docker stack deploy`; this project does not use Docker Compose to run the
-application. It defines the application on a manager, the global worker agent,
-an isolated SQLite volume, the internal mTLS overlay network and the required
-external secrets. Run these commands from a Swarm manager.
-
-### 1. Initialize agent mTLS
-
-The repository helper creates or verifies the overlay network, CA,
-certificates and five agent secrets. Private keys stay outside the repository.
-
-```bash
-packages/containerhub-agent/deploy-remote-worker-proof.sh init
-```
-
-See [`packages/containerhub-agent/TLS.md`](packages/containerhub-agent/TLS.md)
-for certificate ownership, rotation and manual setup.
-
-### 2. Configure Vault access
-
-In the Vault frontend, create a `containerhub` client with
-`encryptResponse=false`, then grant it access to the existing
-`containerhub-jwt` and `containerhub-api-key` secrets. Create the bootstrap
-credential once per Swarm cluster, from a manager:
-
-```bash
-docker secret create containerhub-vault-client-key -
-```
-
-Paste the `clientKey` of the Vault client named `containerhub`, press Enter,
-then press `Ctrl+D`. Docker prints `containerhub-vault-client-key` when the
-secret is created. Swarm distributes it to the authorized application and
-monitoring tasks; do not repeat the command on worker nodes.
-
-The Vault URL must be reachable from the Swarm tasks; `localhost:3080` inside
-a container points to that container, not to the manager host. Use HTTPS
-outside a trusted local network.
-
-Initial administrator creation is disabled by default. Only when enabling it, create
-a Vault secret with identifier `containerhub-bootstrap-password` and the desired
-administrator password as its value; it is **not** another Docker secret. Grant
-the `containerhub` client access, then set
-`CONTAINERHUB_VAULT_BOOTSTRAP_PASSWORD_SECRET_ID=containerhub-bootstrap-password`
-in the manager's shell before deploying a dedicated stack, or on the existing
-ContainerHub service with `docker service update --env-add`. The variable holds
-only the identifier, never the password. See
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
-for recovery in a shared Swarm stack.
-
-There is no default bootstrap username or identity. Set
-`CONTAINERHUB_BOOTSTRAP_ENABLED=true`, the Vault secret identifier above,
-and all four non-secret fields `CONTAINERHUB_BOOTSTRAP_USERNAME`,
-`CONTAINERHUB_BOOTSTRAP_NAME`, `CONTAINERHUB_BOOTSTRAP_EMAIL` and
-`CONTAINERHUB_BOOTSTRAP_PHONE` before deployment if creating the initial user.
-
-### 3. Build the images
-
-Build the unified application and agent images directly with Docker:
-
-```bash
-docker build --target application -t containerhub:swarm-test .
-docker build -f packages/containerhub-agent/Dockerfile -t containerhub-agent:swarm-test .
-```
-
-`docker stack deploy` does not build or copy local images between nodes. Before
-deployment, make both images available on every eligible node by pushing them
-to a registry or preloading them with `docker save`/`docker load`. With a
-registry, set the image names before building:
-
-```bash
-export CONTAINERHUB_IMAGE=registry.example/containerhub:swarm-test
-export CONTAINERHUB_AGENT_IMAGE=registry.example/containerhub-agent:swarm-test
-docker build --target application -t "$CONTAINERHUB_IMAGE" .
-docker build -f packages/containerhub-agent/Dockerfile -t "$CONTAINERHUB_AGENT_IMAGE" .
-docker push "$CONTAINERHUB_IMAGE"
-docker push "$CONTAINERHUB_AGENT_IMAGE"
-```
-
-For a single-manager test without a registry, the application image only needs
-to be present on that manager; the agent image must be preloaded on every Linux
-worker.
-
-### 4. Deploy and test
-
-The default browser origin and published URL are
-`http://127.0.0.1:9998`. When opening ContainerHub through another hostname or
-IP, export the exact browser origin before deploying so terminal WebSockets are
-accepted. You can also customize the exposed port using `CONTAINERHUB_PORT`.
-
-```bash
-export CONTAINERHUB_ORIGIN=http://127.0.0.1:9998
-export CONTAINERHUB_PORT=9998
-export CONTAINERHUB_STORAGE_ROOT=/storage
-export CONTAINERHUB_VAULT_URL=http://192.168.122.1:3080
-docker stack deploy --resolve-image never -c docker-compose.yml containerhub-test
-docker stack services containerhub-test
-```
-
-For a new cluster without an existing login, configure the optional bootstrap
-fields in step 2 **before** running this deployment command. Otherwise the
-stack starts without creating an administrator.
-
-Create `$CONTAINERHUB_STORAGE_ROOT`, `/logs`, and `/localdata` with the required
-ownership on every eligible manager and worker before deployment. The stack
-mounts all three paths into the application and each global agent; the monitoring
-service does not use them. Provisioning on the manager alone does not make a
-worker bind mount usable.
-
-Use `--with-registry-auth` instead of `--resolve-image never` when the images
-are hosted in an authenticated registry. Open `$CONTAINERHUB_ORIGIN`, sign in
-with an existing user or the explicitly configured bootstrap user, and verify
-the Nodes page. To exercise the remote path, place a disposable service on a worker and use its task actions
-for statistics or terminal access.
-
-### 5. Clean up
-
-```bash
-docker stack rm containerhub-test
-until [ -z "$(docker ps -aq --filter label=com.docker.stack.namespace=containerhub-test)" ]; do sleep 1; done
-docker volume rm containerhub-test_containerhub-data
-```
-
-Keep the agent mTLS network and secrets when they will be reused. Their removal
-and certificate rotation are documented in the TLS manual.
+Follow **one deployment guide**: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+It covers building and distributing both images, preparing Vault, the Mongo
+network and host paths, selecting the database and browser origin, preflight,
+deployment, and verification. Do not apply this partial stack definition to
+the existing shared `dockerway` stack. The separate
+[`agent TLS manual`](packages/containerhub-agent/TLS.md) is an optional setup,
+not a prerequisite for the default stack.
 
 ### Backend environment contract
 
@@ -187,9 +73,11 @@ ContainerHub uses the current Drax environment names directly:
 
 Startup fails before database connection or bootstrap work when a required
 value is missing. `DRAX_JWT_SECRET` and `DRAX_APIKEY_SECRET` deliberately have
-no runtime fallback and must differ. The migration/coexistence deployment uses `mongo` and the shared
-`incartainer` database; SQLite remains the alternative engine supported by
-the current Drax identity repositories.
+no runtime fallback and must differ. The Swarm stack maps
+`CONTAINERHUB_MONGO_URI` to `DRAX_MONGO_URI` and defaults to the `containerhub`
+database, **not** the legacy `incartainer` database. Select a different URI
+only after validating identity/schema compatibility. SQLite remains an
+alternative for development, not the configuration of this Swarm stack.
 
 ### API authentication
 
@@ -217,42 +105,31 @@ would create another privileged user.
 
 ### Node agent
 
-`packages/containerhub-agent` builds a global Swarm process whose `/health`
-response verifies the Docker daemon mounted on that node. It requires a CA and
-server certificate/key, rejects clients without a certificate signed by that
-CA, and reports the Swarm `NODE_ID` injected by `stack.yml`. The backend enables
-the Nodes-page health column only when its CA and client certificate/key are all
-configured; otherwise the column shows the unconfigured state.
+`packages/containerhub-agent` runs globally on Linux workers. Its `/health`
+checks the local Docker daemon and reports the Swarm `NODE_ID`; the backend
+matches that ID to the requested worker. The default stack uses HTTP/WS on an
+overlay network with no published agent port. This is not client authentication
+or transport encryption. The code also supports optional mTLS, but the default
+stack mounts no agent certificates; see the separate TLS manual only if that
+deployment mode is explicitly selected.
 
-The same mTLS connection serves `/containers/running`. Ghost detection lists
-the manager's local containers directly and queries this endpoint on every other
-node, then reconciles all containers against the manager's task snapshot. The
-existing `DOCKER_VIEW` endpoint returns `503` if any remote node is unavailable,
-unconfigured, or returns an invalid inventory; it never returns partial success.
-Health/inventory responses have a two-second deadline and an 8 MiB ceiling. The node ID
-is checked before consuming its inventory. Authenticated deployment and browser proof
-have exercised the mTLS agent against a distinct worker.
+The same agent serves `/containers/running`. Ghost detection scans the manager
+locally and other nodes via the agent; it returns `503` rather than partial
+inventory if a remote node is unavailable. Agent health/inventory requests have
+a two-second deadline and an 8 MiB response ceiling.
 
-Task/service stats now resolve the task's `NodeID`: local tasks use the manager
-daemon, other tasks use `GET /containers/:containerId/stats` on that node's
-agent. The existing raw `{task, stats}` contract is unchanged. Remote failures
-return `503`, never a manager fallback. Stats have a ten-second deadline because
-[Docker collects two sampling cycles](https://docs.docker.com/reference/api/engine/version/v1.47/#tag/Container/operation/ContainerStats)
-with `stream=false`; the 8 MiB response ceiling and node/container checks remain.
+Task/service stats resolve the task's `NodeID`: local tasks use the manager
+daemon; remote tasks use `GET /containers/:containerId/stats` on that worker's
+agent. Remote failures return `503`, never a manager fallback.
 
-Terminal keeps its existing user ticket and Origin checks. Remote tasks use a
-binary mTLS WebSocket to the same agent port; the manager resolves the target,
+Terminal keeps its user ticket and Origin checks. Remote tasks use a binary
+WebSocket to the same agent port; the manager resolves the target,
 and the agent verifies its node plus the running container's task/node labels
 before exec. Shells remain `sh`/`bash`, with bounded resize/input/output and
-session teardown. Task inspect and polling statistics pages now consume the
-protected REST endpoints. Distributed proof has exercised these paths with a
-task placed on a distinct worker; all-node host provisioning remains pending.
-
-Certificate issuance and Docker secret creation are deployment-owned. The
-agent is not published on a host port: the backend discovers each global task
-through Swarm DNS on their shared overlay network and confirms its `NODE_ID`.
-See [`packages/containerhub-agent/TLS.md`](packages/containerhub-agent/TLS.md)
-for certificate issuance, Docker secrets, network wiring and deployment.
+session teardown. The agent is not published on a host port: the backend
+discovers its tasks through Swarm DNS on the shared overlay and checks `NODE_ID`.
+Earlier distributed proof used optional mTLS; it is not proof that the current
+HTTP/WS stack has been verified on a live worker.
 
 ## Migration plan
 
@@ -261,8 +138,8 @@ Pages migrate one by one from `docker-fortes` (Vue 2) to
 Until all pages are migrated, both stacks run side by side and the
 DNS routes by URL prefix.
 
-The shared mTLS agent, remote ghost reconciliation, stats/charts and keyboard-driven
-terminal passed authenticated proof with a task on a distinct worker. The next
-migration slice is RBAC-03 users/roles administration, starting with the ID-05
-shared-Mongo existing-user login proof. LDAP is deferred until Drax provides native
-LDAP support.
+Remote ghost reconciliation, stats/charts and terminal have prior distributed
+proof with an mTLS agent. The current default stack is HTTP/WS; verify remote
+behavior with a ready worker before claiming deployment parity. Shared-Mongo
+existing-user login is a separate migration check, not a consequence of the
+default `containerhub` database. LDAP remains deferred.

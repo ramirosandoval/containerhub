@@ -1,6 +1,18 @@
-# Manual de TLS para ContainerHub Agent
+# Manual opcional de mTLS para ContainerHub Agent
 
-El agent usa **mTLS**: el agent presenta un certificado de servidor y ContainerHub presenta un certificado de cliente. El puerto `9997` no se publica en los nodos; ambos servicios se comunican únicamente por una red overlay y el DNS interno de Swarm.
+**No es un paso del despliegue estándar.** El stack raíz
+[`docker-compose.yml`](../../docker-compose.yml) usa HTTP/WS sin certificados
+entre backend y agente en una red overlay privada, sin publicar el puerto 9997.
+El procedimiento vigente de build, configuración y despliegue está en
+[`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md). Este manual documenta una
+topología mTLS **alternativa** que requiere coordinación de backend, agente,
+red y secrets; no ejecutes `deploy-remote-worker-proof.sh init` para levantar
+el stack raíz.
+
+Solo **cuando se configura esta alternativa**, el agente presenta un
+certificado de servidor y ContainerHub presenta uno de cliente. El puerto
+`9997` sigue sin publicarse; ambos servicios se comunican por overlay y DNS
+interno de Swarm.
 
 El servidor Node se configura con `requestCert: true` y `rejectUnauthorized: true`: solicita un certificado al cliente y rechaza conexiones que la CA configurada no autoriza ([Node.js 22 — `tls.createServer`](https://nodejs.org/docs/latest-v22.x/api/tls.html#tlscreateserveroptions-secureconnectionlistener)).
 
@@ -131,7 +143,7 @@ secrets:
 
 `back` es el nombre ilustrativo del servicio: aplicar ese bloque al servicio backend real. Mantener sus otras redes, variables y secrets existentes.
 
-## 6. Construir y desplegar el agent
+## 6. Construir y desplegar el agent opcional
 
 Desde la raíz del repositorio:
 
@@ -149,7 +161,14 @@ CONTAINERHUB_AGENT_IMAGE=registry.example.internal/containerhub-agent:VERSION \
   containerhub-agent
 ```
 
-Reemplazar `registry.example.internal/containerhub-agent:VERSION` por una referencia inmutable disponible para todos los nodos. Después, volver a desplegar el stack del backend con la red, los secrets y las variables del paso anterior.
+Reemplazar `registry.example.internal/containerhub-agent:VERSION` por una
+referencia versionada disponible para todos los nodos. Este `stack.yml` de
+prueba monta únicamente el Docker socket; **no** incluye `/storage`, `/logs`,
+`/localdata` ni el volumen de datos que exige el provisioning remoto del stack
+raíz. No sustituye el despliegue de los tres servicios: si necesitas esas
+operaciones, incorpora los mismos roots y mounts en backend y en **cada**
+agente antes de cambiar de topología. Después, configura el backend con la
+red, los secrets y las variables del paso anterior.
 
 ## 7. Verificar
 
@@ -185,7 +204,11 @@ docker service logs --tail 100 containerhub-agent_agent
 docker service logs --tail 100 NOMBRE_SERVICIO_BACKEND
 ```
 
-En ContainerHub, abrir **Nodes** con un usuario autorizado. Cada nodo con una tarea activa del agent debe aparecer saludable. Esto comprueba DNS, mTLS, identidad `NODE_ID` y acceso al Docker daemon desde el flujo real del backend; no prueba que el puerto sea accesible desde fuera del overlay.
+En ContainerHub, abrir **Nodes** con un usuario autorizado. Cada nodo con una
+tarea activa del agent debe aparecer saludable. En **esta topología mTLS**, eso
+comprueba DNS, certificados, identidad `NODE_ID` y acceso al Docker daemon
+desde el flujo real del backend; no prueba que el puerto sea accesible desde
+fuera del overlay ni que el stack estándar HTTP/WS funcione en ese worker.
 
 ## Problemas frecuentes
 
