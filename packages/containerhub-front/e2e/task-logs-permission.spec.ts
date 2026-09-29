@@ -79,7 +79,7 @@ test('groups filters separately from viewer controls at desktop and mobile width
     await expect(filters.getByRole('combobox', {name: 'Incluir'})).toBeVisible()
     await expect(filters.getByRole('combobox', {name: 'Excluir'})).toBeVisible()
     await expect(filters.locator('input[type="number"]')).toBeVisible()
-    await expect(filters.getByRole('switch', {name: 'Timestamps'})).toBeVisible()
+    await expect(actions.getByRole('switch', {name: 'Timestamps'})).toBeVisible()
     await expect(actions.getByRole('switch', {name: 'Pausar'})).toBeVisible()
     const desktopFilters = await filters.boundingBox()
     const desktopActions = await actions.boundingBox()
