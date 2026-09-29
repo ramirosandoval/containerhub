@@ -141,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import {CrudRefreshButton, CrudSearch, useCrud, CrudSavedQueriesButton} from '@drax/crud-vue'
+import {CrudRefreshButton, CrudSearch, useCrud, useCrudStore, CrudSavedQueriesButton} from '@drax/crud-vue'
 import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterButton.vue'
 import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
@@ -181,6 +181,7 @@ const restartResults = ref<ServiceRestartViewResult[]>([])
 const removeDialog = ref(false)
 const removing = ref(false)
 const removeResults = ref<ServiceRemoveViewResult[]>([])
+useCrudStore(ServiceCrud.instance.name).$patch({search: '', dynamicFilters: []})
 prepareFilters()
 const hasInitialFilters = applyInitialFilter('stack', route.query.stack) || applyInitialFilter('image', route.query.image)
 onMounted(async () => {

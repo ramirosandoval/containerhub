@@ -151,6 +151,7 @@ type TagPipeline = {
 const {t} = useI18n()
 const entity = GitLabProjectsCrud.instance
 const {doPaginate, items, itemsPerPage, loading, page, search, sortBy, totalItems} = useCrud(entity)
+search.value = ''
 const {filteredHeaders} = useCrudColumns(entity)
 const expanded = ref<string[]>([])
 const projectTags = ref<Record<number, GitLabTag[] | undefined>>({})

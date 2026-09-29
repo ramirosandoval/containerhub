@@ -67,6 +67,7 @@ const route = useRoute()
 const router = useRouter()
 const entity = RegistryImagesCrud.instance
 const {doPaginate, items, itemsPerPage, loading, page, search, sortBy, totalItems} = useCrud(entity)
+search.value = ''
 const {filteredHeaders} = useCrudColumns(entity)
 const expanded = ref<string[]>([])
 const usage = ref(new Map<string, RepositoryUsage>())

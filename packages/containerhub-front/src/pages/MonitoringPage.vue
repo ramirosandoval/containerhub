@@ -46,7 +46,7 @@
 import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useAuthStore} from '@drax/identity-vue'
-import {useCrud, CrudSearch, CrudSavedQueriesButton, CrudRefreshButton} from '@drax/crud-vue'
+import {useCrud, useCrudStore, CrudSearch, CrudSavedQueriesButton, CrudRefreshButton} from '@drax/crud-vue'
 import CrudFilterButton from '@drax/crud-vue/src/components/buttons/CrudFilterButton.vue'
 import CrudColumnsButton from '@drax/crud-vue/src/components/buttons/CrudColumnsButton.vue'
 import {useCrudColumns} from '@drax/crud-vue/src/composables/UseCrudColumns'
@@ -67,6 +67,7 @@ const busy = ref(false)
 const creationDialog = ref<{open(): Promise<void>} | null>(null)
 const confirmation = ref<{configuration: MonitoringConfiguration; action: 'pause' | 'resume' | 'delete'} | null>(null)
 function localDate(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
+useCrudStore(MonitoringCrud.instance.name).$patch({search: '', dynamicFilters: []})
 prepareFilters()
 function expired(configuration: MonitoringConfiguration): boolean { return configuration.type === 'calendar' && Boolean(configuration.until && configuration.until < localDate(new Date())) }
 function openHistory(configuration: MonitoringConfiguration) { void router.push({name: 'monitoring-history', params: {id: configuration._id}}) }
